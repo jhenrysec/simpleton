@@ -301,6 +301,26 @@ export function keysCommand() {
   return "python3 range.py keys --hosts range-hosts.json --ssh-config range-ssh.conf";
 }
 
+export function plantCommand(cfg: BenchConfig) {
+  const token = shQuote(tokenOrPlaceholder(cfg.token));
+  const c2 = cfg.attacker.trim() || "10.0.0.10";
+  return [
+    "python3 range.py plant",
+    "--hosts range-hosts.json",
+    "--ssh-config range-ssh.conf",
+    `--c2 ${c2}`,
+    `--channel ${cfg.channel}`,
+    `--token ${token}`,
+    `--profile ${cfg.timing}`,
+    `--tcp-port ${cfg.tcp}`,
+    `--http-port ${cfg.http}`,
+    `--dns-port ${cfg.dns}`,
+    `--mqtt-port ${cfg.mqtt}`,
+    `--ws-port ${cfg.ws}`,
+    `--zone ${sanitizeZone(cfg.zone)}`,
+  ].join(" ");
+}
+
 export function openTunnelCommand() {
   return "ssh -F range-ssh.conf lab-wan";
 }

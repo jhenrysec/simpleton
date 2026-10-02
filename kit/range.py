@@ -3478,6 +3478,9 @@ def selftest():
     key_errors = keys_selfcheck()
     if key_errors:
         failures.extend(key_errors)
+    plant_errors = plant_selfcheck()
+    if plant_errors:
+        failures.extend(plant_errors)
     route_errors = route_syntax_check()
     if route_errors:
         failures.extend(route_errors)
@@ -4027,6 +4030,252 @@ def keys_main(args):
     return 0
 
 
+def last_octet(ip):
+    parts = (ip or "").split(".")
+    if len(parts) != 4:
+        return ""
+    for part in parts:
+        if not part.isdigit():
+            return ""
+        number = int(part)
+        if number < 0 or number > 255:
+            return ""
+    return str(int(parts[3]))
+
+
+def plant_hosts(doc):
+    seen = set()
+    chosen = []
+    used_ids = set()
+    for host in doc.get("hosts") or []:
+        ip = (host.get("host") or "").strip()
+        os_name = str(host.get("os") or "")
+        role = str(host.get("role") or "host").lower()
+        is_wan = host.get("name") == "wan" or host.get("id") == "wan"
+        is_router = role == "router" or "vyos" in os_name.lower() or is_wan
+        if is_router or not ip or ip in seen:
+            continue
+        seen.add(ip)
+        windows = "win" in os_name.lower()
+        sid = last_octet(ip) or sanitize_id(host.get("name") or ip)
+        if sid in used_ids:
+            pieces = ip.split(".")
+            sid = sanitize_id("{0}-{1}".format(pieces[-2], pieces[-1])) if len(pieces) >= 2 else sid + "b"
+        used_ids.add(sid)
+        user = (host.get("user") or ("defender" if windows else "root")).strip() or "root"
+        chosen.append({
+            "alias": "lab-" + sanitize_id(host.get("name") or ip),
+            "ip": ip,
+            "name": host.get("name") or ip,
+            "windows": windows,
+            "user": user,
+            "sid": sid,
+        })
+    return chosen
+
+
+def linux_agent_start(remote_py, c2, channel, token, sid, profile, ports, zone):
+    if remote_py.startswith("$"):
+        py = remote_py
+    else:
+        py = shell_quote(remote_py)
+    rest = [
+        "agent",
+        "--c2", c2,
+        "--channel", channel,
+        "--token", token,
+        "--id", sid,
+        "--profile", profile or "continuous",
+        "--tcp-port", str(ports["tcp"]),
+        "--http-port", str(ports["http"]),
+        "--dns-port", str(ports["dns"]),
+        "--mqtt-port", str(ports["mqtt"]),
+        "--ws-port", str(ports["ws"]),
+        "--zone", zone or "lab",
+    ]
+    quoted = "python3 {0} {1}".format(py, " ".join(shell_quote(part) for part in rest))
+    return (
+        "if [ -f /var/tmp/range-agent.pid ] && kill -0 \"$(cat /var/tmp/range-agent.pid)\" 2>/dev/null; then echo ALREADY; exit 0; fi\n"
+        "setsid {cmd} </dev/null >/var/tmp/range-agent.log 2>&1 &\n"
+        "echo $! >/var/tmp/range-agent.pid\n"
+        "echo STARTED\n"
+    ).format(cmd=quoted)
+
+
+def windows_agent_start(use_python, c2, channel, token, sid, profile, ports, zone):
+    token_q = ps_quote(token)
+    c2_q = ps_quote(c2)
+    sid_q = ps_quote(sid)
+    if use_python:
+        launch = (
+            "'python','range.py','agent','--c2',{c2},'--channel','{channel}','--token',{token},"
+            "'--id',{sid},'--profile','{profile}','--tcp-port','{tcp}','--http-port','{http}',"
+            "'--dns-port','{dns}','--mqtt-port','{mqtt}','--ws-port','{ws}','--zone','{zone}'"
+        ).format(
+            c2=c2_q, channel=channel, token=token_q, sid=sid_q, profile=profile or "continuous",
+            tcp=int(ports["tcp"]), http=int(ports["http"]), dns=int(ports["dns"]),
+            mqtt=int(ports["mqtt"]), ws=int(ports["ws"]), zone=zone or "lab",
+        )
+        body = "$p = Start-Process -FilePath python -WindowStyle Hidden -PassThru -ArgumentList @({launch}); ".format(launch=launch)
+    else:
+        launch = (
+            "'-NoProfile','-ExecutionPolicy','Bypass','-File',$dest,"
+            "'-C2',{c2},'-Channel','{channel}','-Token',{token},'-Id',{sid},'-Timing','{profile}',"
+            "'-TcpPort','{tcp}','-HttpPort','{http}','-WsPort','{ws}'"
+        ).format(
+            c2=c2_q, channel=channel, token=token_q, sid=sid_q, profile=profile or "continuous",
+            tcp=int(ports["tcp"]), http=int(ports["http"]), ws=int(ports["ws"]),
+        )
+        body = (
+            "$dest = Join-Path $env:USERPROFILE 'range-agent.ps1'; "
+            "$p = Start-Process -FilePath powershell.exe -WindowStyle Hidden -PassThru -ArgumentList @({launch}); "
+        ).format(launch=launch)
+    return (
+        "powershell.exe -NoProfile -NonInteractive -Command "
+        "\"$pidFile = Join-Path $env:USERPROFILE 'range-agent.pid'; "
+        "if (Test-Path -LiteralPath $pidFile) {{ "
+        "$old = @(Get-Content -LiteralPath $pidFile -ErrorAction SilentlyContinue)[0]; "
+        "if ($old -match '^[0-9]+$' -and (Get-Process -Id ([int]$old) -ErrorAction SilentlyContinue)) {{ Write-Output 'ALREADY'; exit 0 }} "
+        "}}; "
+        "{body}"
+        "Set-Content -LiteralPath $pidFile -Value $p.Id; "
+        "Write-Output 'STARTED'\""
+    ).format(body=body)
+
+
+def scp_put(config, alias, local_path, remote_path):
+    proc = subprocess.Popen(
+        ["scp", "-F", config, local_path, "{0}:{1}".format(alias, remote_path)],
+    )
+    return proc.wait()
+
+
+def plant_selfcheck():
+    doc = normalize_lab_doc({
+        "hosts": [
+            {"name": "wan", "role": "router", "host": "10.50.160.129", "os": "VYOS", "user": "atropia_admin"},
+            {"name": "lan", "role": "router", "host": "172.24.18.1", "os": "VYOS", "user": "atropia_admin"},
+            {"name": "web-nginx", "role": "host", "host": "172.24.10.180", "os": "Debian 12", "user": "root"},
+            {"name": "deb9-44", "role": "host", "host": "172.24.19.44", "os": "Debian 9", "user": "root"},
+            {"name": "win-82", "role": "host", "host": "172.24.18.82", "os": "Windows 10", "user": "defender"},
+        ],
+    })
+    chosen = plant_hosts(doc)
+    failures = []
+    names = [item["name"] for item in chosen]
+    if names != ["web-nginx", "deb9-44", "win-82"]:
+        failures.append("plant-roster")
+    ids = [item["sid"] for item in chosen]
+    if ids != ["180", "44", "82"]:
+        failures.append("plant-id")
+    ports = {"tcp": 443, "http": 80, "dns": 53, "mqtt": 1883, "ws": 8070}
+    script = linux_agent_start("/root/range.py", "10.0.0.10", "ws", "lab-token-ok", "180", "continuous", ports, "lab")
+    if "STARTED" not in script or "--id" not in script or "180" not in script:
+        failures.append("plant-linux")
+    if shutil.which("bash"):
+        proc = subprocess.Popen(["bash", "-n"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        _out, _err = proc.communicate(script)
+        if proc.returncode != 0:
+            failures.append("plant-syntax")
+    win = windows_agent_start(False, "10.0.0.10", "ws", "lab-token-ok", "82", "continuous", ports, "lab")
+    if "range-agent.ps1" not in win or "STARTED" not in win or "-Id" not in win:
+        failures.append("plant-windows")
+    return failures
+
+
+def plant_main(args):
+    doc = load_lab_hosts(args.hosts)
+    token = args.token or ""
+    if len(token) < 8:
+        raise SystemExit("token must be at least 8 characters. Generate one in Range Bench and use that.")
+    c2 = (args.c2 or "").strip()
+    if not c2:
+        raise SystemExit("need --c2, the address the guests use to reach the attacker")
+    channel = args.channel
+    profile = args.profile or "continuous"
+    zone = sanitize_id(args.zone or "lab")
+    ports = {
+        "tcp": args.tcp_port,
+        "http": args.http_port,
+        "dns": args.dns_port,
+        "mqtt": args.mqtt_port,
+        "ws": args.ws_port,
+    }
+    kit_dir = os.path.dirname(os.path.abspath(__file__))
+    linux_src = os.path.join(kit_dir, "range.py")
+    win_src = os.path.join(kit_dir, "range-agent.ps1")
+    if not os.path.isfile(linux_src):
+        raise SystemExit("missing {0}".format(linux_src))
+    path, line = ensure_pubkey()
+    log("installing {0}".format(path))
+    log("type the password when a hop asks. Routers are atropia_admin. Each host asks as the user in the roster.")
+    log("the key goes on the jumps, the routers, and the hosts. An agent is started only on the hosts.")
+    failed = 0
+    plan = keys_plan(doc)
+    keyed = set()
+    for target in plan:
+        command = windows_key_command(line) if target["windows"] else unix_key_command(line)
+        log("---- key {0} {1} ----".format(target["alias"], target["ip"]))
+        code, out = ssh_exec(args.ssh_config, target["alias"], command, 0, False)
+        if out.strip():
+            sys.stdout.write(out if out.endswith("\n") else out + "\n")
+        if code == 0 and "INSTALLED" in out:
+            log("key is on {0}".format(target["ip"]))
+            keyed.add(target["ip"])
+        else:
+            failed += 1
+            log("could not install a key on {0}".format(target["ip"]))
+    hosts = plant_hosts(doc)
+    if not hosts:
+        log("no student hosts to start. Routers keep the key and do not run an agent.")
+        return 1 if failed else 0
+    log("starting {0} agent(s). The id is the last octet of the address.".format(len(hosts)))
+    for host in hosts:
+        if host["ip"] not in keyed:
+            log("skipping {0}. the key did not land, so the copy would ask again.".format(host["ip"]))
+            failed += 1
+            continue
+        use_ps1 = host["windows"] and channel in ("tcp", "http", "ws")
+        if host["windows"] and not use_ps1:
+            log("{0} is Windows and {1} needs Python there. Copying range.py.".format(host["ip"], channel))
+            local_path = linux_src
+            remote_path = "range.py"
+        elif host["windows"]:
+            if not os.path.isfile(win_src):
+                log("missing {0}".format(win_src))
+                failed += 1
+                continue
+            local_path = win_src
+            remote_path = "range-agent.ps1"
+        else:
+            local_path = linux_src
+            remote_path = "/root/range.py" if host["user"] == "root" else "range.py"
+        log("---- copy {0} {1} id {2} ----".format(host["alias"], host["ip"], host["sid"]))
+        code = scp_put(args.ssh_config, host["alias"], local_path, remote_path)
+        if code != 0:
+            failed += 1
+            log("could not copy to {0}".format(host["ip"]))
+            continue
+        if host["windows"]:
+            command = windows_agent_start(not use_ps1, c2, channel, token, host["sid"], profile, ports, zone)
+        else:
+            remote_py = remote_path if remote_path.startswith("/") else "$HOME/range.py"
+            command = linux_agent_start(remote_py, c2, channel, token, host["sid"], profile, ports, zone)
+        code, out = ssh_exec(args.ssh_config, host["alias"], command, 40, True)
+        if out.strip():
+            sys.stdout.write(out if out.endswith("\n") else out + "\n")
+        if "STARTED" in out or "ALREADY" in out:
+            log("{0} agent id {1}".format(host["ip"], host["sid"]))
+        else:
+            failed += 1
+            log("could not start the agent on {0}".format(host["ip"]))
+    log("on the operator: sessions, then use the last octet. Example: use {0}".format(hosts[0]["sid"]))
+    if failed:
+        log("{0} step(s) failed".format(failed))
+        return 1
+    return 0
+
+
 def ping_main(args):
     target = args.target
     allowed = set("0123456789.:abcdefABCDEF")
@@ -4111,6 +4360,20 @@ def main(argv):
     ky.add_argument("--hosts", required=True)
     ky.add_argument("--ssh-config", required=True)
 
+    pl = sub.add_parser("plant", help="install keys, copy the agent, and start it on every student host")
+    pl.add_argument("--hosts", required=True)
+    pl.add_argument("--ssh-config", required=True)
+    pl.add_argument("--c2", required=True)
+    pl.add_argument("--token", required=True)
+    pl.add_argument("--channel", default="ws", choices=["tcp", "http", "dns", "mqtt", "ws", "icmp"])
+    pl.add_argument("--profile", default="continuous", choices=["continuous", "off", "live", "hunt"])
+    pl.add_argument("--zone", default="lab")
+    pl.add_argument("--tcp-port", type=int, default=443)
+    pl.add_argument("--http-port", type=int, default=80)
+    pl.add_argument("--dns-port", type=int, default=53)
+    pl.add_argument("--mqtt-port", type=int, default=1883)
+    pl.add_argument("--ws-port", type=int, default=8070)
+
     pg = sub.add_parser("ping", help="ICMP from the WAN router, not through SOCKS")
     pg.add_argument("--ssh-config", required=True)
     pg.add_argument("--count", type=int, default=3)
@@ -4135,6 +4398,8 @@ def main(argv):
         return watch_main(args)
     if args.mode == "keys":
         return keys_main(args)
+    if args.mode == "plant":
+        return plant_main(args)
     if args.mode == "ping":
         return ping_main(args)
     parser.print_help()

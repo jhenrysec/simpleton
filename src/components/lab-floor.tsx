@@ -3,6 +3,7 @@ import { Check, Copy, Download } from "lucide-react";
 import {
   fanoutCommand,
   keysCommand,
+  plantCommand,
   watchCommand,
   hostsDocument,
   openTunnelCommand,
@@ -134,6 +135,11 @@ export function LabFloor({
         <CopyBlock title="ICMP" hint="Runs ping on the WAN router, which can actually reach the lab. A laptop ping still will not cross the jump." command={pingCommand(nginx?.address || "172.24.10.180")} />
         <CopyBlock title="One command, every host" hint="Routers included. The WAN hop is the path, not a target." command={fanoutCommand()} />
       </div>
+      <CopyBlock
+        title="Plant the agents"
+        hint="Run this from the kit folder on your laptop, after the operator is already up on the attacker and the path files are in this same folder. It logs in to each jump, each router as atropia_admin, and each host as the user in the roster, and asks for that password once. Then it installs your key, copies range.py or range-agent.ps1, and starts the agent. The id is the last octet of the address, so 172.24.10.180 is use 180. Routers get the key only. VYOS does not run an agent."
+        command={plantCommand(cfg)}
+      />
       <CopyBlock
         title="Watch the class"
         hint="Opens an SSH socket to every focused host and both LAN routers, then keeps them. Every few seconds it prints who is logged in and the last lines of the student history. Same output is marked unchanged. Ctrl-C stops the printing. The sockets stay. Agents are separate: sessions in the operator only lists hosts where a callback is running."

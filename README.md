@@ -23,7 +23,19 @@ Two pieces. **Range Bench** is the page on your laptop. It does not connect to t
 
 ### Open Range Bench
 
-On your laptop, in the folder that contains `package.json`. That is the clone itself, not `kit`.
+On your laptop, in the folder that contains `package.json`. That is the clone itself, not `kit`. The page needs Node.js 22. `node -v` has to print `v22`. Anything older fails immediately with `Unexpected token {` in `scripts/with-app-env.mjs`. Ubuntu’s `nodejs` package is that older Node. Do not install it.
+
+If `node -v` is not v22, put Node 22 in your home directory. This does not replace the system Node.
+
+```bash
+curl -fsSL -o /tmp/node22.tar.xz https://nodejs.org/dist/v22.23.3/node-v22.23.3-linux-x64.tar.xz
+mkdir -p "$HOME/.local/node22"
+tar -xJf /tmp/node22.tar.xz -C "$HOME/.local/node22" --strip-components=1
+export PATH="$HOME/.local/node22/bin:$PATH"
+node -v
+```
+
+Add that `export` line to `~/.bashrc` if you want the new Node in later terminals. On an arm64 machine, use `node-v22.23.3-linux-arm64.tar.xz` instead. Guests do not need Node 22. Only the laptop running this page does.
 
 ```bash
 npm install

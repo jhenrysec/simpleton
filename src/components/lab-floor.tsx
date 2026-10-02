@@ -1,16 +1,7 @@
 import { useState } from "react";
-import { Check, Copy, Download } from "lucide-react";
+import { Check, Copy } from "lucide-react";
 import {
-  fanoutCommand,
-  keysCommand,
-  plantCommand,
-  watchCommand,
-  hostsDocument,
-  openTunnelCommand,
-  pingCommand,
-  sshConfig,
   tradecraftScript,
-  zipStore,
   type BenchConfig,
   type LabHost,
 } from "@/lib/bench";
@@ -52,19 +43,10 @@ function CopyBlock({ title, hint, command }: { title: string; hint: string; comm
 export function LabFloor({
   cfg,
   onChange,
-  htmlName,
-  htmlText,
-  imageName,
-  imageBytes,
 }: {
   cfg: BenchConfig;
   onChange: (partial: Partial<BenchConfig>) => void;
-  htmlName: string;
-  htmlText: string;
-  imageName: string;
-  imageBytes: Uint8Array | null;
 }) {
-  const nginx = cfg.hosts.find((host) => host.id === "web-nginx");
   const dupes = new Set<string>();
   const seen = new Set<string>();
   cfg.hosts.forEach((host) => {
@@ -80,67 +62,17 @@ export function LabFloor({
     });
   }
 
-  async function downloadPath() {
-    const encoder = new TextEncoder();
-    const files: { name: string; data: Uint8Array }[] = [
-      { name: "range-hosts.json", data: encoder.encode(JSON.stringify(hostsDocument(cfg), null, 2) + "\n") },
-      { name: "range-ssh.conf", data: encoder.encode(sshConfig(cfg)) },
-    ];
-    if (htmlText && htmlName) {
-      files.push({ name: `deface/${htmlName}`, data: encoder.encode(htmlText) });
-    }
-    if (imageBytes && imageName) {
-      files.push({ name: `deface/${imageName}`, data: new Uint8Array(imageBytes) });
-    }
-    const blob = zipStore(files);
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "range-path.zip";
-    link.click();
-    URL.revokeObjectURL(url);
-  }
-
   return (
     <section className="flex flex-col gap-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Path into the lab</h2>
-          <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted">
-            You are already on ocelot, so there is no jump. Ocelot talks to the WAN router, and that router is the hop to every host. Hosts call ocelot’s public address.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={downloadPath}
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border px-4 text-sm font-semibold text-fg"
-        >
-          <Download className="size-4" aria-hidden="true" />
-          Download path files
-        </button>
+      <div>
+        <h2 className="text-lg font-semibold">Path into the lab</h2>
+        <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted">
+          Ocelot talks to the WAN router, and that router is the hop to every host. The kit download includes this roster. You do not copy a second file.
+        </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Mini label="WAN user" value={cfg.wanUser} onChange={(wanUser) => onChange({ wanUser })} />
       </div>
-      <p className="text-sm leading-relaxed text-muted">
-        This is not a SOCKS proxy. Open the master on ocelot, type the WAN password once, and later commands reuse that socket. It stays up until you close it.
-      </p>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <CopyBlock title="Open the master" hint="Run on ocelot, inside range-lab. It asks for the WAN password, then returns to the ocelot prompt. No router shell is left open, so the router cannot idle it out. If a previous try said the shared connection closed, run rm -f ~/.ssh/range-cm-* first." command={openTunnelCommand()} />
-        <CopyBlock title="Install your key" hint="Run on ocelot. Copies ocelot’s public key to the WAN router, both LAN routers, and every host. Each one asks once." command={keysCommand()} />
-        <CopyBlock title="ICMP" hint="Runs ping on the WAN router, which can reach the lab. A ping from ocelot’s public side does not." command={pingCommand(nginx?.address || "172.24.10.180")} />
-        <CopyBlock title="One command, every host" hint="Routers included. The WAN hop is the path, not a target." command={fanoutCommand()} />
-      </div>
-      <CopyBlock
-        title="Plant the agents"
-        hint="Run this on ocelot, in range-lab, after the operator is already up. It logs in to the WAN router and both LAN routers as atropia_admin, and to each host as the user in the roster. Then it installs ocelot’s key, copies range.py or range-agent.ps1, and starts the agent. The id is the last octet, so 172.24.10.180 is use 180. Agents call the public address, not the management address. Routers get the key only."
-        command={plantCommand(cfg)}
-      />
-      <CopyBlock
-        title="Watch the class"
-        hint="Opens an SSH socket to every focused host and both LAN routers, then keeps them. Every few seconds it prints who is logged in and the last lines of the student history. Same output is marked unchanged. Ctrl-C stops the printing. The sockets stay. Agents are separate: sessions in the operator only lists hosts where a callback is running."
-        command={watchCommand(cfg.student)}
-      />
 
       <div className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">Roster</h2>

@@ -311,8 +311,23 @@ export function plantCommand(cfg: BenchConfig) {
   ].join(" ");
 }
 
-export function openTunnelCommand() {
-  return "ssh -fN -o ServerAliveInterval=5 -o ServerAliveCountMax=9999 -F range-ssh.conf lab-wan";
+export function rangeSettings(cfg: BenchConfig) {
+  return {
+    token: cfg.token.trim(),
+    bind: "0.0.0.0",
+    attacker: cfg.attacker.trim() || "10.50.160.9",
+    tcp_port: cfg.tcp,
+    http_port: cfg.http,
+    dns_port: cfg.dns,
+    mqtt_port: cfg.mqtt,
+    ws_port: cfg.ws,
+    zone: sanitizeZone(cfg.zone),
+    profile: cfg.timing,
+    channel: cfg.channel,
+    icmp: true,
+    webroot: cfg.webroot.trim(),
+    student: sanitizeId(cfg.student || "defender"),
+  };
 }
 
 export function pingCommand(address: string) {

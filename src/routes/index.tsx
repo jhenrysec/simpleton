@@ -10,10 +10,19 @@ import {
   needsPythonOnWindows,
   normalizeConfig,
   operatorCommand,
+  hostsDocument,
+  rangeSettings,
+  sshConfig,
   windowsCommand,
+  zipStore,
   type BenchConfig,
   type Timing,
 } from "@/lib/bench";
+import rangePy from "../../kit/range.py?raw";
+import rangeAgent from "../../kit/range-agent.ps1?raw";
+import rangeReadme from "../../kit/README.md?raw";
+import rangeSetup from "../../kit/setup?raw";
+import rangeCmd from "../../kit/range?raw";
 import { LabFloor } from "@/components/lab-floor";
 
 export const Route = createFileRoute("/")({ component: Home });
@@ -28,6 +37,7 @@ function Home() {
   const [imageName, setImageName] = useState("");
   const [imageBytes, setImageBytes] = useState<Uint8Array | null>(null);
   const [uploadNote, setUploadNote] = useState("");
+  const [kitNote, setKitNote] = useState("");
 
   useEffect(() => {
     try {
@@ -57,6 +67,34 @@ function Home() {
     patch(next === "class" ? PRESET_PRIVILEGED : PRESET_OPEN);
   }
 
+  function downloadKit() {
+    if (cfg.token.trim().length < 8) {
+      setKitNote("Generate a token first. It has to be at least 8 characters.");
+      return;
+    }
+    const encoder = new TextEncoder();
+    const files: { name: string; data: Uint8Array }[] = [
+      { name: "range-lab/range.py", data: encoder.encode(rangePy) },
+      { name: "range-lab/range-agent.ps1", data: encoder.encode(rangeAgent) },
+      { name: "range-lab/README.md", data: encoder.encode(rangeReadme) },
+      { name: "range-lab/setup", data: encoder.encode(rangeSetup) },
+      { name: "range-lab/range", data: encoder.encode(rangeCmd) },
+      { name: "range-lab/range-hosts.json", data: encoder.encode(JSON.stringify(hostsDocument(cfg), null, 2) + "\n") },
+      { name: "range-lab/range-ssh.conf", data: encoder.encode(sshConfig(cfg)) },
+      { name: "range-lab/range.json", data: encoder.encode(JSON.stringify(rangeSettings(cfg), null, 2) + "\n") },
+    ];
+    if (htmlText && htmlName) files.push({ name: `range-lab/deface/${htmlName}`, data: encoder.encode(htmlText) });
+    if (imageBytes && imageName) files.push({ name: `range-lab/deface/${imageName}`, data: new Uint8Array(imageBytes) });
+    const blob = zipStore(files);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "range-lab.zip";
+    link.click();
+    URL.revokeObjectURL(url);
+    setKitNote("");
+  }
+
   function newToken() {
     const alphabet = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     const bytes = new Uint8Array(24);
@@ -75,14 +113,17 @@ function Home() {
             callback channels, the same live shell, and a deface that also locks the page.
           </p>
         </div>
-        <a
-          href="/range-lab.zip"
-          download
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-fg"
-        >
-          <Download className="size-4" aria-hidden="true" />
-          Download kit
-        </a>
+        <div className="flex flex-col items-start gap-2">
+          <button
+            type="button"
+            onClick={downloadKit}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-fg"
+          >
+            <Download className="size-4" aria-hidden="true" />
+            Download kit
+          </button>
+          {kitNote ? <p className="max-w-xs text-sm text-primary">{kitNote}</p> : null}
+        </div>
       </header>
 
       <section className="grid gap-4 lg:grid-cols-5">
@@ -90,7 +131,7 @@ function Home() {
           <h2 className="text-lg font-semibold">Lab settings</h2>
           <Field label="Ocelot public address" value={cfg.attacker} onChange={(attacker) => patch({ attacker })} />
           <p className="text-sm leading-relaxed text-muted">
-            This is the address hosts and routers can see. It changes. The address you use to log in to ocelot is a different one, on the path card.
+            Hosts call this address. It changes. Put today’s value in before you download the kit.
           </p>
           <div className="flex flex-col gap-2">
             <div className="flex items-end justify-between gap-3">
@@ -171,7 +212,7 @@ function Home() {
         </div>
       </section>
 
-      <LabFloor cfg={cfg} onChange={patch} htmlName={htmlName} htmlText={htmlText} imageName={imageName} imageBytes={imageBytes} />
+      <LabFloor cfg={cfg} onChange={patch} />
 
       <section className="flex flex-col gap-4">
         <div className="flex items-center gap-2">

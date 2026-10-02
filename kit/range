@@ -1,0 +1,91 @@
+#!/bin/sh
+# One command. Opens the WAN master, plants the agents, then becomes the operator.
+cd "$(dirname "$(readlink -f "$0")")"
+
+for file in range.py range-hosts.json range-ssh.conf range.json; do
+  if [ ! -f "$file" ]; then
+    echo "missing $PWD/$file"
+    echo "Run setup from the extracted folder first."
+    exit 1
+  fi
+done
+
+if ! command -v python3 >/dev/null 2>&1 || ! command -v ssh >/dev/null 2>&1; then
+  echo "python3 and ssh have to be on this machine."
+  exit 1
+fi
+
+eval "$(python3 -c '
+import json, shlex
+cfg = json.load(open("range.json"))
+def emit(key, value):
+    print("%s=%s" % (key, shlex.quote("" if value is None else str(value))))
+emit("TOKEN", cfg.get("token", ""))
+emit("C2", cfg.get("attacker", ""))
+emit("CHANNEL", cfg.get("channel", "ws"))
+emit("PROFILE", cfg.get("profile", "continuous"))
+emit("ZONE", cfg.get("zone", "lab"))
+emit("STUDENT", cfg.get("student", "defender"))
+emit("TCP", cfg.get("tcp_port", 443))
+emit("HTTP", cfg.get("http_port", 80))
+emit("DNS", cfg.get("dns_port", 53))
+emit("MQTT", cfg.get("mqtt_port", 1883))
+emit("WS", cfg.get("ws_port", 8070))
+')"
+
+if [ "${#TOKEN}" -lt 8 ]; then
+  echo "The token in range.json is too short. Download the kit again after generating a token."
+  exit 1
+fi
+
+mkdir -p "$HOME/.ssh"
+chmod 700 "$HOME/.ssh"
+chmod 600 range-ssh.conf
+
+if [ "${1:-up}" = "watch" ]; then
+  exec python3 range.py watch --hosts range-hosts.json --ssh-config range-ssh.conf --student "$STUDENT"
+fi
+
+if ! ssh -O check -F range-ssh.conf lab-wan >/dev/null 2>&1; then
+  echo "Opening the path to the WAN router. Type that password. This prompt comes back when the master is up."
+  ssh -fN -o ServerAliveInterval=5 -o ServerAliveCountMax=9999 -F range-ssh.conf lab-wan || {
+    echo "Could not open the WAN master."
+    exit 1
+  }
+  if ! ssh -O check -F range-ssh.conf lab-wan >/dev/null 2>&1; then
+    echo "The router closed the connection before the master could stay up."
+    exit 1
+  fi
+fi
+
+echo "Installing keys and starting an agent on each host. The id is the last octet."
+python3 range.py plant --hosts range-hosts.json --ssh-config range-ssh.conf \
+  --c2 "$C2" --channel "$CHANNEL" --token "$TOKEN" --profile "$PROFILE" \
+  --tcp-port "$TCP" --http-port "$HTTP" --dns-port "$DNS" --mqtt-port "$MQTT" --ws-port "$WS" --zone "$ZONE" || {
+  echo "One or more hosts did not start. The operator is starting anyway. sessions shows who called in."
+}
+
+page=""
+image=""
+for f in deface/*.html deface/*.htm; do
+  if [ -f "$f" ]; then
+    page=$f
+    break
+  fi
+done
+for f in deface/*.png deface/*.jpg deface/*.jpeg deface/*.gif deface/*.webp; do
+  if [ -f "$f" ]; then
+    image=$f
+    break
+  fi
+done
+
+echo "Starting the operator. This window is now the range console. Leave it open."
+set -- python3 range.py operator --config range.json
+if [ -n "$page" ]; then
+  set -- "$@" --page "$page"
+fi
+if [ -n "$image" ]; then
+  set -- "$@" --image "$image"
+fi
+exec sudo "$@"

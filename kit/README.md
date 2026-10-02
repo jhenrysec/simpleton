@@ -1,5 +1,15 @@
 # Range lab kit
 
+Set the address, token, and roster in Range Bench, then download one zip. On ocelot:
+
+```bash
+unzip range-lab.zip -d ~
+cd ~/range-lab
+sh setup
+```
+
+Open a new terminal and type `range`. It asks for the WAN password, installs your key, copies the right script to each host, starts the agent as the last octet of the address, and leaves this window at the `range>` console. `range watch` in a second window shows who is logged in. Do not run setup with sudo.
+
 One operator process on the attacker VM, one agent on each student VM. Six plaintext callback channels, one interactive session, and a web-deface scenario that also locks the page so the class has to undo it.
 
 Isolated lab network only. Install the agent only on virtual machines you administer. The frames are signed with your lab token so stray packets are ignored, and they are not encrypted, so Wireshark can read them after a short decode.

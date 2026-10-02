@@ -19,7 +19,15 @@ Range Bench remembers the last form in the browser. Ports, the token, and addres
 
 ## Start here
 
-Two pieces. **Range Bench** is the page on your laptop. It does not connect to the lab. It fills in the commands. **The kit** is the `kit` folder. That is what you copy onto the attacker and the guests. **Download kit** on the page is only a zip of that same folder. If you cloned this repository, you already have it.
+Two pieces. **Range Bench** is the page on your laptop. It does not connect to the lab. **Download kit** builds one zip from the form: the program, the roster, the path, and setup. Copy that zip to ocelot, extract it in your home directory, and run setup once.
+
+```bash
+unzip range-lab.zip -d ~
+cd ~/range-lab
+sh setup
+```
+
+Open a new terminal and type `range`. That opens the WAN path, copies the agent to every host, and leaves you at the console. You do not start a second download or a second script.
 
 ### Open Range Bench
 

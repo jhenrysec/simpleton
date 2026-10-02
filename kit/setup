@@ -1,0 +1,43 @@
+#!/bin/sh
+# Install Range on this account. Run once, from the extracted folder. Do not use sudo.
+set -e
+cd "$(dirname "$0")"
+ROOT="$(pwd)"
+
+missing=0
+for cmd in python3 ssh scp; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "missing command: $cmd"
+    missing=1
+  fi
+done
+for file in range.py range-agent.ps1 range-hosts.json range-ssh.conf range.json range; do
+  if [ ! -f "$ROOT/$file" ]; then
+    echo "missing file: $ROOT/$file"
+    missing=1
+  fi
+done
+if [ "$missing" -ne 0 ]; then
+  echo "Extract the whole zip into your home directory, then run setup from that folder."
+  exit 1
+fi
+
+mkdir -p "$HOME/.ssh" "$HOME/.local/bin"
+chmod 700 "$HOME/.ssh"
+chmod 600 "$ROOT/range-ssh.conf"
+chmod 755 "$ROOT/range" "$ROOT/setup"
+chmod 644 "$ROOT/range.py" "$ROOT/range-agent.ps1" "$ROOT/range-hosts.json" "$ROOT/range.json"
+
+ln -sfn "$ROOT/range" "$HOME/.local/bin/range"
+
+path_line='export PATH="$HOME/.local/bin:$PATH"'
+for rc in "$HOME/.bashrc" "$HOME/.profile"; do
+  if [ -f "$rc" ] && grep -q '.local/bin' "$rc"; then
+    continue
+  fi
+  printf '\n%s\n' "$path_line" >> "$rc"
+done
+
+echo "Range is installed."
+echo "Open a new terminal, or run:  export PATH=\"\$HOME/.local/bin:\$PATH\""
+echo "Then type:  range"

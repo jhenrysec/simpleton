@@ -8,6 +8,8 @@ import {
   hostsDocument,
   openTunnelCommand,
   pingCommand,
+  reachOcelotCommand,
+  copyKitCommand,
   sshConfig,
   tradecraftScript,
   zipStore,
@@ -107,7 +109,7 @@ export function LabFloor({
         <div>
           <h2 className="text-lg font-semibold">Path into the lab</h2>
           <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted">
-            Students should treat 10.50.0.0/24 as the public side. There is no real internet. The WAN router’s last two octets change; the router port stays 20222. Hosts on 172.24.0.0/24 stay on port 22.
+            The laptop only reaches ocelot, through one jump. Ocelot is Kali and has no internet. Hosts cannot see the laptop. They call ocelot’s public address, which changes. From ocelot the path is the WAN router, then the hosts. Run the operator, plant, and watch on ocelot.
           </p>
         </div>
         <button
@@ -120,24 +122,26 @@ export function LabFloor({
         </button>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Mini label="Jump 1 user" value={cfg.jump1User} onChange={(jump1User) => onChange({ jump1User })} />
-        <Mini label="Jump 1 host" value={cfg.jump1Host} onChange={(jump1Host) => onChange({ jump1Host })} />
-        <Mini label="Jump 2 user" value={cfg.jump2User} onChange={(jump2User) => onChange({ jump2User })} />
-        <Mini label="Jump 2 host" value={cfg.jump2Host} onChange={(jump2Host) => onChange({ jump2Host })} />
+        <Mini label="Jump user" value={cfg.jump1User} onChange={(jump1User) => onChange({ jump1User })} />
+        <Mini label="Jump host" value={cfg.jump1Host} onChange={(jump1Host) => onChange({ jump1Host })} />
+        <Mini label="Ocelot user" value={cfg.jump2User} onChange={(jump2User) => onChange({ jump2User })} />
+        <Mini label="Ocelot management address" value={cfg.jump2Host} onChange={(jump2Host) => onChange({ jump2Host })} />
         <Mini label="WAN user" value={cfg.wanUser} onChange={(wanUser) => onChange({ wanUser })} />
       </div>
       <p className="text-sm leading-relaxed text-muted">
-        This is a ProxyJump with a shared SSH socket, not a SOCKS proxy. Proxychains was loading a library into every process and it cannot carry ICMP. Open the master once, type the jump passwords, and later commands reuse that socket. X11 is left off. Add <span className="font-mono text-fg">-X</span> yourself on a single ssh if you need a window.
+        This is not a SOCKS proxy. The laptop command only opens a shell on ocelot. The path files are for ocelot: it talks to the WAN router directly, and that router is the jump to every host. The socket on ocelot stays up until you close it.
       </p>
       <div className="grid gap-4 lg:grid-cols-2">
-        <CopyBlock title="Open the master" hint="Type the jump passwords once. The socket stays up until you close it or the class is rebuilt. It does not expire." command={openTunnelCommand()} />
-        <CopyBlock title="Install your key" hint="Copies the public key on this account to every jump, both routers, and every host. Each one asks once. After that, this class does not ask again. A rebuilt VM needs it once more." command={keysCommand()} />
+        <CopyBlock title="Reach ocelot" hint="Run on the laptop. One jump, then the ocelot account. This management address is not the address hosts call." command={reachOcelotCommand(cfg)} />
+        <CopyBlock title="Copy the kit onto ocelot" hint="Run on the laptop, in the folder that contains range.py and the two path files. Ocelot cannot download them. Kali already has Python." command={copyKitCommand(cfg)} />
+        <CopyBlock title="Open the master" hint="Run on ocelot, inside range-lab. Type the WAN password once. There is no jump in this file." command={openTunnelCommand()} />
+        <CopyBlock title="Install your key" hint="Run on ocelot. Copies ocelot’s public key to the WAN router, both LAN routers, and every host. Each one asks once." command={keysCommand()} />
         <CopyBlock title="ICMP" hint="Runs ping on the WAN router, which can actually reach the lab. A laptop ping still will not cross the jump." command={pingCommand(nginx?.address || "172.24.10.180")} />
         <CopyBlock title="One command, every host" hint="Routers included. The WAN hop is the path, not a target." command={fanoutCommand()} />
       </div>
       <CopyBlock
         title="Plant the agents"
-        hint="Run this from the kit folder on your laptop, after the operator is already up on the attacker and the path files are in this same folder. It logs in to each jump, each router as atropia_admin, and each host as the user in the roster, and asks for that password once. Then it installs your key, copies range.py or range-agent.ps1, and starts the agent. The id is the last octet of the address, so 172.24.10.180 is use 180. Routers get the key only. VYOS does not run an agent."
+        hint="Run this on ocelot, in range-lab, after the operator is already up. It logs in to the WAN router and both LAN routers as atropia_admin, and to each host as the user in the roster. Then it installs ocelot’s key, copies range.py or range-agent.ps1, and starts the agent. The id is the last octet, so 172.24.10.180 is use 180. Agents call the public address, not the management address. Routers get the key only."
         command={plantCommand(cfg)}
       />
       <CopyBlock

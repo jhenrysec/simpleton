@@ -88,7 +88,10 @@ function Home() {
       <section className="grid gap-4 lg:grid-cols-5">
         <div className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-4 lg:col-span-2 sm:p-5">
           <h2 className="text-lg font-semibold">Lab settings</h2>
-          <Field label="Attacker address" value={cfg.attacker} onChange={(attacker) => patch({ attacker })} />
+          <Field label="Ocelot public address" value={cfg.attacker} onChange={(attacker) => patch({ attacker })} />
+          <p className="text-sm leading-relaxed text-muted">
+            This is the address hosts and routers can see. It changes. The address you use to log in to ocelot is a different one, on the path card.
+          </p>
           <div className="flex flex-col gap-2">
             <div className="flex items-end justify-between gap-3">
               <label className="text-sm text-muted" htmlFor="token">

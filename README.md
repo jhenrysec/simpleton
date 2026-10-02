@@ -108,7 +108,7 @@ Focus stays off on the WAN router. It stays on for everyone fanout and watch sho
 | deb-150 | Debian 12 | `172.24.10.150` | `22` |
 | web-nginx | Debian 12, NGINX | `172.24.10.180` | `22` |
 | deb9-44 | Debian 9 | `172.24.19.44` | `22` |
-| deb-22 | Debian 12 | `172.24.22.19` | `22` |
+| deb-22 | Debian 12 | `172.24.19.19` | `22` |
 
 Debian 9 is `172.24.19.44`. It is not a second copy of `172.24.10.150`. If a saved bench still shows the old duplicate, reload the page. The saved row is rewritten.
 

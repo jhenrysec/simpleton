@@ -196,7 +196,7 @@ export const DEFAULT_HOSTS: LabHost[] = [
   { id: "deb-150", name: "deb-150", role: "host", os: "Debian 12", address: "172.24.10.150", port: 22, sshUser: "root", focus: true, note: "" },
   { id: "web-nginx", name: "web-nginx", role: "host", os: "Debian 12", address: "172.24.10.180", port: 22, sshUser: "root", focus: true, note: "NGINX defacement" },
   { id: "deb9-44", name: "deb9-44", role: "host", os: "Debian 9", address: "172.24.19.44", port: 22, sshUser: "root", focus: true, note: "Debian 9" },
-  { id: "deb-22", name: "deb-22", role: "host", os: "Debian 12", address: "172.24.22.19", port: 22, sshUser: "root", focus: true, note: "" },
+  { id: "deb-22", name: "deb-22", role: "host", os: "Debian 12", address: "172.24.19.19", port: 22, sshUser: "root", focus: true, note: "Reachable address. The other NIC, 172.24.22.19, is not routed." },
 ];
 
 export type ShellChoice = "vi" | "python" | "perl";
@@ -382,6 +382,9 @@ function crc32(data: Uint8Array) {
 export function normalizeConfig(saved: Partial<BenchConfig> | null | undefined): BenchConfig {
   const shell = saved?.shell === "python" || saved?.shell === "perl" || saved?.shell === "vi" ? saved.shell : "vi";
   const hosts = (Array.isArray(saved?.hosts) && saved.hosts.length > 0 ? saved.hosts : DEFAULT_HOSTS).map((host) => {
+    if (host.id === "deb-22" && host.address === "172.24.22.19") {
+      return { ...host, address: "172.24.19.19", note: "Reachable address. The other NIC, 172.24.22.19, is not routed." };
+    }
     if (host.id === "deb9-150" || (host.address === "172.24.10.150" && /debian 9/i.test(host.os))) {
       return { ...host, id: "deb9-44", name: host.name === "deb9-150" ? "deb9-44" : host.name, address: "172.24.19.44", os: "Debian 9", note: host.note.includes("Same address") ? "Debian 9" : host.note };
     }

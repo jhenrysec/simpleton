@@ -17,11 +17,48 @@ Instructor console and portable callback kit for an isolated defensive-operation
 
 Range Bench remembers the last form in the browser. Ports, the token, and addresses live in those commands, not in the scripts. A later class keeps the same files.
 
+## Start here
+
+Two pieces. **Range Bench** is the page on your laptop. It does not connect to the lab. It fills in the commands. **The kit** is the `kit` folder. That is what you copy onto the attacker and the guests. **Download kit** on the page is only a zip of that same folder. If you cloned this repository, you already have it.
+
+### Open Range Bench
+
+On your laptop, in the folder that contains `package.json`. That is the clone itself, not `kit`.
+
+```bash
+npm install
+npm run dev
+```
+
+Node 22. Open `http://localhost:8080`. Leave that terminal running. The page needs no account. Lab settings stay in this browser.
+
+Set the attacker address to the address the guests use to reach the attacker, generate a token, and leave timing on **Continuous**. Then copy the three commands. If you change the token, the channel, the timing, or a port after copying, copy again.
+
+### On the attacker
+
+Copy `kit` onto the Ubuntu attacker. The folder name does not matter.
+
+```bash
+cd kit
+python3 range.py selftest
+```
+
+`PASS tcp,http,dns,mqtt,ws` means the check worked. **The command then exits.** It does not start the operator. ICMP is skipped unless that shell can open a raw socket. Do not start class if the line is not `PASS`.
+
+The operator is a second command. Leave it in the foreground. It does not return to a prompt. That window is the console. Replace the token, and replace `10.0.0.10` with the attacker address.
+
+```bash
+sudo python3 range.py operator --token 'lab-token-change-me' --bind 0.0.0.0 \
+  --tcp-port 443 --http-port 80 --dns-port 53 --mqtt-port 1883 --ws-port 8070 --zone lab
+```
+
+`sessions` stays empty until a guest calls in. Copy `range.py` to each Linux guest and `range-agent.ps1` to Windows, and start one agent per machine with its own id. The commands on the page are the ones to paste. Operator detail is in [kit/README.md](kit/README.md).
+
 ## Order of the class
 
-1. Download the kit. Download the path files into the same folder.
-2. Open the SSH master. Install your key. It asks once per hop.
-3. Self-test, then start the operator. Start one agent per guest, each with its own id.
+1. Open Range Bench from the repository root, or skip it and use the commands below.
+2. Copy `kit` to the attacker. Self-test. Start the operator and leave it open. Start one agent per guest.
+3. Open the SSH master. Install your key. It asks once per hop.
 4. Watch from a second terminal. Work one agent at a time in the first.
 5. Deface when you mean to. Say the brief. Do not paste the fix.
 
@@ -71,13 +108,7 @@ This is a multi-day exercise, not a one-minute demo.
 
 ## Prove the kit
 
-On the attacker, in the unpacked kit, before anyone is watching:
-
-```bash
-python3 range.py selftest
-```
-
-`PASS tcp,http,dns,mqtt,ws` means those five channels round-tripped a deface and a restore on loopback. ICMP is skipped unless that shell can open a raw socket. Do not start class on a failed self-test.
+`python3 range.py selftest` only checks this machine, then exits. The operator command in [Start here](#start-here) is what stays running.
 
 The bench builds three commands: the attacker, the Linux guest, and Windows. Change `--id` so every VM is unique. `sessions` lists agents that have called in. A TCP, WebSocket, or MQTT session stays listed for as long as the socket is up. It does not age out.
 
@@ -103,17 +134,6 @@ python3 range.py watch --hosts range-hosts.json --ssh-config range-ssh.conf --st
 ```
 
 ICMP from a laptop will not cross the jump. The ping card runs `ping` on the WAN router. Fanout runs one command on every focused host, including the LAN routers. The WAN hop is the path, not a target.
-
-## Run the bench
-
-Node 22. From this directory:
-
-```bash
-npm install
-npm run dev
-```
-
-The page listens on port `8080`. `npm run typecheck` and `npm run build` are the checks. The bench does not need an account. Lab settings stay in the browser.
 
 ## Requirements
 

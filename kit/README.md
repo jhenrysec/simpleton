@@ -20,7 +20,7 @@ Check the attacker before class:
 python3 range.py selftest
 ```
 
-`PASS tcp,http,dns,mqtt,ws` means the channels work. ICMP is skipped unless that shell can open a raw socket.
+`PASS tcp,http,dns,mqtt,ws` means the channels work. The command then exits. It does not start the operator. ICMP is skipped unless that shell can open a raw socket. Do not continue if the line is not `PASS`.
 
 ## Start the attacker
 

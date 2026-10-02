@@ -28,14 +28,26 @@ On your laptop, in the folder that contains `package.json`. That is the clone it
 If `node -v` is not v22, put Node 22 in your home directory. This does not replace the system Node.
 
 ```bash
-curl -fsSL -o /tmp/node22.tar.xz https://nodejs.org/dist/v22.23.3/node-v22.23.3-linux-x64.tar.xz
+unset TAR_OPTIONS
+curl -fL -o /tmp/node22.tar.gz https://nodejs.org/dist/v22.23.3/node-v22.23.3-linux-x64.tar.gz
 mkdir -p "$HOME/.local/node22"
-tar -xJf /tmp/node22.tar.xz -C "$HOME/.local/node22" --strip-components=1
+tar -xzf /tmp/node22.tar.gz -C "$HOME/.local/node22" --strip-components=1
 export PATH="$HOME/.local/node22/bin:$PATH"
 node -v
 ```
 
-Add that `export` line to `~/.bashrc` if you want the new Node in later terminals. On an arm64 machine, use `node-v22.23.3-linux-arm64.tar.xz` instead. Guests do not need Node 22. Only the laptop running this page does.
+`ls -lh /tmp/node22.tar.gz` should show tens of megabytes. A file of a few kilobytes is an error page, not Node. If `tar` still complains, extract it without `--strip-components`:
+
+```bash
+cd /tmp
+tar -xzf /tmp/node22.tar.gz
+mkdir -p "$HOME/.local/node22"
+cp -a /tmp/node-v22.23.3-linux-x64/. "$HOME/.local/node22/"
+export PATH="$HOME/.local/node22/bin:$PATH"
+node -v
+```
+
+Add that `export` line to `~/.bashrc` if you want the new Node in later terminals. On an arm64 machine, use `node-v22.23.3-linux-arm64.tar.gz` instead. Guests do not need Node 22. Only the laptop running this page does.
 
 ```bash
 npm install

@@ -8,8 +8,6 @@ import {
   hostsDocument,
   openTunnelCommand,
   pingCommand,
-  reachOcelotCommand,
-  copyKitCommand,
   sshConfig,
   tradecraftScript,
   zipStore,
@@ -109,7 +107,7 @@ export function LabFloor({
         <div>
           <h2 className="text-lg font-semibold">Path into the lab</h2>
           <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted">
-            The laptop only reaches ocelot, through one jump. Ocelot is Kali and has no internet. Hosts cannot see the laptop. They call ocelot’s public address, which changes. From ocelot the path is the WAN router, then the hosts. Run the operator, plant, and watch on ocelot.
+            You are already on ocelot, so there is no jump. Ocelot talks to the WAN router, and that router is the hop to every host. Hosts call ocelot’s public address.
           </p>
         </div>
         <button
@@ -122,21 +120,15 @@ export function LabFloor({
         </button>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Mini label="Jump user" value={cfg.jump1User} onChange={(jump1User) => onChange({ jump1User })} />
-        <Mini label="Jump host" value={cfg.jump1Host} onChange={(jump1Host) => onChange({ jump1Host })} />
-        <Mini label="Ocelot user" value={cfg.jump2User} onChange={(jump2User) => onChange({ jump2User })} />
-        <Mini label="Ocelot management address" value={cfg.jump2Host} onChange={(jump2Host) => onChange({ jump2Host })} />
         <Mini label="WAN user" value={cfg.wanUser} onChange={(wanUser) => onChange({ wanUser })} />
       </div>
       <p className="text-sm leading-relaxed text-muted">
-        This is not a SOCKS proxy. The laptop command only opens a shell on ocelot. The path files are for ocelot: it talks to the WAN router directly, and that router is the jump to every host. The socket on ocelot stays up until you close it.
+        This is not a SOCKS proxy. Open the master on ocelot, type the WAN password once, and later commands reuse that socket. It stays up until you close it.
       </p>
       <div className="grid gap-4 lg:grid-cols-2">
-        <CopyBlock title="Reach ocelot" hint="Run on the laptop. One jump, then the ocelot account. This management address is not the address hosts call." command={reachOcelotCommand(cfg)} />
-        <CopyBlock title="Copy the kit onto ocelot" hint="Run on the laptop, in the folder that contains range.py and the two path files. Ocelot cannot download them. Kali already has Python." command={copyKitCommand(cfg)} />
         <CopyBlock title="Open the master" hint="Run on ocelot, inside range-lab. Type the WAN password once. There is no jump in this file." command={openTunnelCommand()} />
         <CopyBlock title="Install your key" hint="Run on ocelot. Copies ocelot’s public key to the WAN router, both LAN routers, and every host. Each one asks once." command={keysCommand()} />
-        <CopyBlock title="ICMP" hint="Runs ping on the WAN router, which can actually reach the lab. A laptop ping still will not cross the jump." command={pingCommand(nginx?.address || "172.24.10.180")} />
+        <CopyBlock title="ICMP" hint="Runs ping on the WAN router, which can reach the lab. A ping from ocelot’s public side does not." command={pingCommand(nginx?.address || "172.24.10.180")} />
         <CopyBlock title="One command, every host" hint="Routers included. The WAN hop is the path, not a target." command={fanoutCommand()} />
       </div>
       <CopyBlock

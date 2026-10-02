@@ -314,21 +314,6 @@ export function openTunnelCommand() {
   return "ssh -F range-ssh.conf lab-wan";
 }
 
-export function reachOcelotCommand(cfg: BenchConfig) {
-  const jump = `${cfg.jump1User.trim() || "cvte"}@${cfg.jump1Host.trim() || "10.50.11.232"}`;
-  const dest = `${cfg.jump2User.trim() || "ocelot"}@${cfg.jump2Host.trim() || "172.24.24.101"}`;
-  return `ssh -J ${jump} ${dest}`;
-}
-
-export function copyKitCommand(cfg: BenchConfig) {
-  const jump = `${cfg.jump1User.trim() || "cvte"}@${cfg.jump1Host.trim() || "10.50.11.232"}`;
-  const dest = `${cfg.jump2User.trim() || "ocelot"}@${cfg.jump2Host.trim() || "172.24.24.101"}`;
-  return [
-    `ssh -J ${jump} ${dest} 'mkdir -p range-lab'`,
-    `scp -o ProxyJump=${jump} range.py range-agent.ps1 range-hosts.json range-ssh.conf ${dest}:range-lab/`,
-  ].join("\n");
-}
-
 export function pingCommand(address: string) {
   return `python3 range.py ping --ssh-config range-ssh.conf ${address.trim() || "172.24.10.180"}`;
 }

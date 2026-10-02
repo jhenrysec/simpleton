@@ -1,0 +1,14 @@
+{
+  "token": "replace-with-a-long-lab-token",
+  "bind": "0.0.0.0",
+  "attacker": "10.0.0.10",
+  "tcp_port": 443,
+  "http_port": 80,
+  "dns_port": 53,
+  "mqtt_port": 1883,
+  "ws_port": 8070,
+  "zone": "lab",
+  "profile": "live",
+  "webroot": "",
+  "icmp": true
+}

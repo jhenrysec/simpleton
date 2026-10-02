@@ -59,11 +59,16 @@ if ! ssh -O check -F range-ssh.conf lab-wan >/dev/null 2>&1; then
 fi
 
 echo "Installing keys and starting an agent on each host. The id is the last octet."
+plant_rc=0
 python3 range.py plant --hosts range-hosts.json --ssh-config range-ssh.conf \
   --c2 "$C2" --channel "$CHANNEL" --token "$TOKEN" --profile "$PROFILE" \
-  --tcp-port "$TCP" --http-port "$HTTP" --dns-port "$DNS" --mqtt-port "$MQTT" --ws-port "$WS" --zone "$ZONE" || {
-  echo "One or more hosts did not start. The operator is starting anyway. sessions shows who called in."
-}
+  --tcp-port "$TCP" --http-port "$HTTP" --dns-port "$DNS" --mqtt-port "$MQTT" --ws-port "$WS" --zone "$ZONE" || plant_rc=$?
+if [ "$plant_rc" -ne 0 ]; then
+  echo "One or more hosts did not start. sessions shows who called in."
+fi
+if [ "${1:-up}" = "plant" ]; then
+  exit "$plant_rc"
+fi
 
 page=""
 image=""

@@ -3617,6 +3617,12 @@ def keys_selfcheck():
         _out, _err = proc.communicate(script)
         if proc.returncode != 0:
             failures.append("keys-script")
+    try:
+        win = windows_key_command("ssh-ed25519 AAAAC3Rlc3Q= range@lab")
+    except Exception:
+        win = ""
+    if "INSTALLED" not in win or "ssh-ed25519 AAAAC3Rlc3Q= range@lab" not in win:
+        failures.append("keys-windows-format")
     return failures
 
 
@@ -3997,11 +4003,11 @@ def windows_key_command(line):
         "New-Item -ItemType Directory -Force -Path $dir | Out-Null; "
         "$path = Join-Path $dir 'authorized_keys'; "
         "if (-not (Test-Path -LiteralPath $path)) { New-Item -ItemType File -Path $path | Out-Null }; "
-        "$line = {key}; "
+        "$line = " + quoted + "; "
         "$have = @(Get-Content -LiteralPath $path -ErrorAction SilentlyContinue); "
         "if ($have -notcontains $line) { Add-Content -LiteralPath $path -Value $line }; "
         "Write-Output 'INSTALLED'\""
-    ).format(key=quoted)
+    )
 
 
 def keys_main(args):

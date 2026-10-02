@@ -3657,8 +3657,9 @@ def ssh_config_text(doc):
         "  ControlMaster auto",
         "  ControlPath ~/.ssh/range-cm-%C",
         "  ControlPersist yes",
-        "  ServerAliveInterval 30",
-        "  ServerAliveCountMax 0",
+        "  ServerAliveInterval 5",
+        "  ServerAliveCountMax 9999",
+        "  TCPKeepAlive yes",
         "  StrictHostKeyChecking accept-new",
         "",
     ]

@@ -146,7 +146,7 @@ SOCKS (`ssh -D`) plus proxychains adds a library to every process and cannot car
 ```bash
 ssh -J cvte@10.50.11.232 ocelot@172.24.24.101
 python3 range.py route --hosts range-hosts.json --write range-ssh.conf
-ssh -F range-ssh.conf lab-wan
+ssh -fN -o ServerAliveInterval=5 -o ServerAliveCountMax=9999 -F range-ssh.conf lab-wan
 python3 range.py keys --hosts range-hosts.json --ssh-config range-ssh.conf
 python3 range.py ping --ssh-config range-ssh.conf 172.24.10.180
 python3 range.py fanout --hosts range-hosts.json --ssh-config range-ssh.conf --cmd 'hostname; who'

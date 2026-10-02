@@ -126,7 +126,7 @@ export function LabFloor({
         This is not a SOCKS proxy. Open the master on ocelot, type the WAN password once, and later commands reuse that socket. It stays up until you close it.
       </p>
       <div className="grid gap-4 lg:grid-cols-2">
-        <CopyBlock title="Open the master" hint="Run on ocelot, inside range-lab. Type the WAN password once. There is no jump in this file." command={openTunnelCommand()} />
+        <CopyBlock title="Open the master" hint="Run on ocelot, inside range-lab. It asks for the WAN password, then returns to the ocelot prompt. No router shell is left open, so the router cannot idle it out. If a previous try said the shared connection closed, run rm -f ~/.ssh/range-cm-* first." command={openTunnelCommand()} />
         <CopyBlock title="Install your key" hint="Run on ocelot. Copies ocelot’s public key to the WAN router, both LAN routers, and every host. Each one asks once." command={keysCommand()} />
         <CopyBlock title="ICMP" hint="Runs ping on the WAN router, which can reach the lab. A ping from ocelot’s public side does not." command={pingCommand(nginx?.address || "172.24.10.180")} />
         <CopyBlock title="One command, every host" hint="Routers included. The WAN hop is the path, not a target." command={fanoutCommand()} />

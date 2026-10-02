@@ -258,8 +258,9 @@ export function sshConfig(cfg: BenchConfig) {
     "  ControlMaster auto",
     "  ControlPath ~/.ssh/range-cm-%C",
     "  ControlPersist yes",
-    "  ServerAliveInterval 30",
-    "  ServerAliveCountMax 0",
+    "  ServerAliveInterval 5",
+    "  ServerAliveCountMax 9999",
+    "  TCPKeepAlive yes",
     "  StrictHostKeyChecking accept-new",
     "",
   ];
@@ -311,7 +312,7 @@ export function plantCommand(cfg: BenchConfig) {
 }
 
 export function openTunnelCommand() {
-  return "ssh -F range-ssh.conf lab-wan";
+  return "ssh -fN -o ServerAliveInterval=5 -o ServerAliveCountMax=9999 -F range-ssh.conf lab-wan";
 }
 
 export function pingCommand(address: string) {

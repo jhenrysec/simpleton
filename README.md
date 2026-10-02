@@ -143,7 +143,7 @@ Operator detail, including `tty`, `get` / `put`, `play logs`, and the host plays
 The bench writes `range-ssh.conf` and `range-hosts.json`. Put them next to `range.py`.
 
 ```bash
-ssh -F range-ssh.conf lab-wan
+ssh -fN -o ServerAliveInterval=5 -o ServerAliveCountMax=9999 -F range-ssh.conf lab-wan
 python3 range.py keys --hosts range-hosts.json --ssh-config range-ssh.conf
 ```
 

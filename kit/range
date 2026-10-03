@@ -42,7 +42,13 @@ mkdir -p "$HOME/.ssh"
 chmod 700 "$HOME/.ssh"
 chmod 600 range-ssh.conf
 
-if [ "${1:-up}" = "watch" ]; then
+mode=up
+if [ "${1:-}" = "watch" ] || [ "${1:-}" = "plant" ]; then
+  mode=$1
+  shift
+fi
+
+if [ "$mode" = "watch" ]; then
   exec python3 range.py watch --hosts range-hosts.json --ssh-config range-ssh.conf --student "$STUDENT"
 fi
 
@@ -62,11 +68,12 @@ echo "Installing keys and starting an agent on each host. The id is the last oct
 plant_rc=0
 python3 range.py plant --hosts range-hosts.json --ssh-config range-ssh.conf \
   --c2 "$C2" --channel "$CHANNEL" --token "$TOKEN" --profile "$PROFILE" \
-  --tcp-port "$TCP" --http-port "$HTTP" --dns-port "$DNS" --mqtt-port "$MQTT" --ws-port "$WS" --zone "$ZONE" || plant_rc=$?
+  --tcp-port "$TCP" --http-port "$HTTP" --dns-port "$DNS" --mqtt-port "$MQTT" --ws-port "$WS" --zone "$ZONE" \
+  "$@" || plant_rc=$?
 if [ "$plant_rc" -ne 0 ]; then
   echo "One or more hosts did not start. sessions shows who called in."
 fi
-if [ "${1:-up}" = "plant" ]; then
+if [ "$mode" = "plant" ]; then
   exit "$plant_rc"
 fi
 

@@ -4061,6 +4061,16 @@ def ensure_pubkey():
     return key_path + ".pub", line
 
 
+def skipped_ips(values):
+    found = set()
+    for item in values or []:
+        for part in str(item).replace(",", " ").split():
+            part = part.strip()
+            if part:
+                found.add(part)
+    return found
+
+
 def keys_plan(doc):
     plan = []
     seen = set()
@@ -4333,6 +4343,8 @@ def plant_selfcheck():
         failures.append("plant-id")
     ports = {"tcp": 443, "http": 80, "dns": 53, "mqtt": 1883, "ws": 8070}
     script = linux_user_launch("10.0.0.10", "ws", "lab-token-ok", "180", "continuous", ports, "lab", True)
+    if skipped_ips(["172.24.18.82", "10.1.1.1,10.2.2.2"]) != set(["172.24.18.82", "10.1.1.1", "10.2.2.2"]):
+        failures.append("plant-skip")
     if "sudo -S" not in script or "STARTED" not in script or "update_notifier.py" not in script or "touch -r" not in script or "/root/range.py" not in script:
         failures.append("plant-linux")
     if shutil.which("bash"):
@@ -4374,9 +4386,18 @@ def plant_main(args):
     log("type the password when a hop asks. Routers are atropia_admin. Each host asks as the user in the roster.")
     log("the key goes on the jumps, the routers, and the hosts. An agent is started only on the hosts.")
     failed = 0
+    skip = skipped_ips(getattr(args, "skip", None))
+    known = set((host.get("host") or "").strip() for host in (doc.get("hosts") or []))
+    for ip in sorted(skip):
+        if ip in known:
+            log("skip {0}".format(ip))
+        else:
+            log("skip {0} is not in the roster".format(ip))
     plan = keys_plan(doc)
     keyed = set()
     for target in plan:
+        if target["ip"] in skip:
+            continue
         command = windows_key_command(line) if target["windows"] else unix_key_command(line)
         log("---- key {0} {1} ----".format(target["alias"], target["ip"]))
         code, out = ssh_exec(args.ssh_config, target["alias"], command, 0, False)
@@ -4388,7 +4409,7 @@ def plant_main(args):
         else:
             failed += 1
             log("could not install a key on {0}".format(target["ip"]))
-    hosts = plant_hosts(doc)
+    hosts = [host for host in plant_hosts(doc) if host["ip"] not in skip]
     if not hosts:
         log("no student hosts to start. Routers keep the key and do not run an agent.")
         return 1 if failed else 0
@@ -4553,6 +4574,7 @@ def main(argv):
     pl.add_argument("--dns-port", type=int, default=53)
     pl.add_argument("--mqtt-port", type=int, default=1883)
     pl.add_argument("--ws-port", type=int, default=8070)
+    pl.add_argument("--skip", action="append", default=[], help="IP to leave alone. Repeat the flag, or separate addresses with commas")
 
     pg = sub.add_parser("ping", help="ICMP from the WAN router, not through SOCKS")
     pg.add_argument("--ssh-config", required=True)

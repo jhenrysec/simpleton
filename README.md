@@ -8,18 +8,38 @@ Instructor console and portable callback kit for an isolated defensive-operation
 
 | Path | What it is |
 |---|---|
-| `src/` | Range Bench. The page that builds the attacker command, the guest commands, the roster, the SSH path, and the plays. |
-| `kit/range.py` | Operator and Linux agent. Python 3.5 or newer. No packages. |
-| `kit/range-agent.ps1` | Windows 10 agent for stock PowerShell 5.1. TCP, HTTP, and WebSocket only. |
-| `kit/range.json.example` | Optional. Same settings as the form, passed with `--config`. |
-| `kit/README.md` | Operator manual: console, deface, plays, terminal, files, logs, and the SSH path. |
-| `public/range-lab.zip` | The kit the **Download kit** button serves. |
+| `src/` | Range Bench, the page that builds the kit. |
+| `kit/` | The operator, the agents, and `setup`. Python 3.5 or newer. No packages. |
+| `scripts/install.sh` | Installs Node.js v22.23.3 if needed, then installs the page. |
 
-Range Bench remembers the last form in the browser. Ports, the token, and addresses live in those commands, not in the scripts. A later class keeps the same files.
+The **Download kit** button builds the zip in the browser from `kit/` and the form. There is no separate zip to keep in the repository.
 
-## Start here
+## Install the page
 
-Two pieces. **Range Bench** is the page on your laptop. It does not connect to the lab. **Download kit** builds one zip from the form: the program, the roster, the path, and setup. Copy that zip to ocelot, extract it in your home directory, and run setup once.
+On the laptop. This does not connect to the lab. Guests and ocelot do not need Node.
+
+```bash
+git clone https://github.com/jhenrysec/charm-prism-glade-bolt.git
+cd charm-prism-glade-bolt
+sh scripts/install.sh
+```
+
+`scripts/install.sh` checks Node. If it is missing, or older than 22, the script downloads Node.js v22.23.3 into `~/.local/node22` and adds it to `~/.bashrc` and `~/.profile`. It does not use `apt` and it does not replace a system Node. It then runs `npm install`.
+
+If the script says to open a new terminal, do that. Then:
+
+```bash
+cd charm-prism-glade-bolt
+npm run dev
+```
+
+Open `http://localhost:8080`. Leave that terminal running. The page needs no account.
+
+Set the attacker address to the address the guests use, generate a token, and leave timing on **Continuous**. Upload `index.html` and the image if you are using them. **Download kit**.
+
+## Install the kit on ocelot
+
+Copy `range-lab.zip` to ocelot. Extract it in your home directory and run setup once. Do not use sudo.
 
 ```bash
 unzip range-lab.zip -d ~
@@ -27,70 +47,24 @@ cd ~/range-lab
 sh setup
 ```
 
-Open a new terminal and type `range`. That opens the WAN path, copies the agent to every host, and leaves you at the console. You do not start a second download or a second script.
+Open a new terminal and type `range`. That opens the WAN path, copies the agent to every host, and leaves you at the console.
 
-### Open Range Bench
-
-On your laptop, in the folder that contains `package.json`. That is the clone itself, not `kit`. The page needs Node.js 22. `node -v` has to print `v22`. Anything older fails immediately with `Unexpected token {` in `scripts/with-app-env.mjs`. Ubuntu’s `nodejs` package is that older Node. Do not install it.
-
-If `node -v` is not v22, put Node 22 in your home directory. This does not replace the system Node.
+Before class, on ocelot:
 
 ```bash
-unset TAR_OPTIONS
-curl -fL -o /tmp/node22.tar.gz https://nodejs.org/dist/v22.23.3/node-v22.23.3-linux-x64.tar.gz
-mkdir -p "$HOME/.local/node22"
-tar -xzf /tmp/node22.tar.gz -C "$HOME/.local/node22" --strip-components=1
-export PATH="$HOME/.local/node22/bin:$PATH"
-node -v
-```
-
-`ls -lh /tmp/node22.tar.gz` should show tens of megabytes. A file of a few kilobytes is an error page, not Node. If `tar` still complains, extract it without `--strip-components`:
-
-```bash
-cd /tmp
-tar -xzf /tmp/node22.tar.gz
-mkdir -p "$HOME/.local/node22"
-cp -a /tmp/node-v22.23.3-linux-x64/. "$HOME/.local/node22/"
-export PATH="$HOME/.local/node22/bin:$PATH"
-node -v
-```
-
-Add that `export` line to `~/.bashrc` if you want the new Node in later terminals. On an arm64 machine, use `node-v22.23.3-linux-arm64.tar.gz` instead. Guests do not need Node 22. Only the laptop running this page does.
-
-```bash
-npm install
-npm run dev
-```
-
-Node 22. Open `http://localhost:8080`. Leave that terminal running. The page needs no account. Lab settings stay in this browser.
-
-Set the attacker address to the address the guests use to reach the attacker, generate a token, and leave timing on **Continuous**. Then copy the three commands. If you change the token, the channel, the timing, or a port after copying, copy again.
-
-### On the attacker
-
-Copy `kit` onto the Ubuntu attacker. The folder name does not matter.
-
-```bash
-cd kit
+cd ~/range-lab
 python3 range.py selftest
 ```
 
-`PASS tcp,http,dns,mqtt,ws` means the check worked. **The command then exits.** It does not start the operator. ICMP is skipped unless that shell can open a raw socket. Do not start class if the line is not `PASS`.
+`PASS tcp,http,dns,mqtt,ws` means the check worked. The command then exits. It does not start the operator. Do not start class if the line is not `PASS`.
 
-The operator is a second command. Leave it in the foreground. It does not return to a prompt. That window is the console. Replace the token, and replace `10.0.0.10` with the attacker address.
-
-```bash
-sudo python3 range.py operator --token 'lab-token-change-me' --bind 0.0.0.0 \
-  --tcp-port 443 --http-port 80 --dns-port 53 --mqtt-port 1883 --ws-port 8070 --zone lab
-```
-
-`sessions` stays empty until a guest calls in. Copy `range.py` to each Linux guest and `range-agent.ps1` to Windows, and start one agent per machine with its own id. The commands on the page are the ones to paste. Operator detail is in [kit/README.md](kit/README.md).
+Operator commands, plays, and the terminal are in [kit/README.md](kit/README.md).
 
 ## Order of the class
 
-1. Open Range Bench from the repository root, or skip it and use the commands below.
-2. Copy `kit` to the attacker. Self-test. Start the operator and leave it open. Start one agent per guest.
-3. Open the SSH master. Install your key. It asks once per hop.
+1. Clone the repository and run `sh scripts/install.sh`. Start the page with `npm run dev`.
+2. Download the kit, copy it to ocelot, and run `sh setup`. Type `range`.
+3. Open the SSH master when `range` asks. It installs the key and starts one agent per host.
 4. Watch from a second terminal. Work one agent at a time in the first.
 5. Deface when you mean to. Say the brief. Do not paste the fix.
 
@@ -140,7 +114,7 @@ This is a multi-day exercise, not a one-minute demo.
 
 ## Prove the kit
 
-`python3 range.py selftest` only checks this machine, then exits. The operator command in [Start here](#start-here) is what stays running.
+`python3 range.py selftest` only checks this machine, then exits. `range` is what stays running.
 
 The bench builds three commands: the attacker, the Linux guest, and Windows. Change `--id` so every VM is unique. `sessions` lists agents that have called in. A TCP, WebSocket, or MQTT session stays listed for as long as the socket is up. It does not age out.
 

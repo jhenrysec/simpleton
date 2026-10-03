@@ -49,6 +49,21 @@ def log(msg):
     sys.stdout.flush()
 
 
+def show_text(text):
+    if text is None:
+        return ""
+    if not isinstance(text, str):
+        text = str(text)
+    kept = []
+    for ch in text:
+        if ch in "\n\t" or 32 <= ord(ch) < 127:
+            kept.append(ch)
+    out = "".join(kept)
+    if len(out) > 12000:
+        out = out[:12000] + "\n[truncated]\n"
+    return out
+
+
 def sanitize_id(value):
     raw = (value or "").lower()
     out = []
@@ -529,10 +544,10 @@ def linux_tradecraft(action, opts):
 
 def re_account(value):
     text = str(value or "")
-    if not text or len(text) > 32:
+    if not text or len(text) > 32 or ".." in text or "/" in text or text.startswith("."):
         return False
     for ch in text:
-        if not (ch.islower() or ch.isdigit() or ch in "-_"):
+        if not (ch.islower() or ch.isdigit() or ch in "-_."):
             if not ("A" <= ch <= "Z"):
                 return False
     return True
@@ -663,13 +678,12 @@ class OperatorKit(object):
         patterns = []
         if self.attacker:
             patterns.append(self.attacker)
-        for port in hub.ports.values():
-            patterns.append(str(port))
         for name in (account, user):
-            if name and name != "defender":
+            if name and name not in ("defender", "mail"):
                 patterns.append(name)
         patterns.append("range.py")
         patterns.append("update_notifier.py")
+        patterns.append("/var/lib/.hold")
         seen = []
         for item in patterns:
             if item and item not in seen:
@@ -1821,7 +1835,13 @@ class Hub(object):
         )
         for frame in frames:
             self.enqueue(sid, frame)
-        if not event.wait(timeout):
+        try:
+            finished = event.wait(timeout)
+        except KeyboardInterrupt:
+            with self.lock:
+                self.waiters.pop((sid, seq), None)
+            return "[interrupted]\n"
+        if not finished:
             with self.lock:
                 self.waiters.pop((sid, seq), None)
             return "[no result before timeout — agent offline or profile is slow]\n"
@@ -3145,7 +3165,7 @@ def cmd_put(hub, sid, local, remote):
             "base64 -d > \"$dest\" << 'RANGEPUT'\n{b64}\nRANGEPUT\n"
             "echo WROTE=$dest BYTES=$(wc -c < \"$dest\")\n"
         ).format(path=shell_quote(remote), b64=b64)
-    log(hub.exec_cmd(sid, script, CMD_TIMEOUT).rstrip("\n"))
+    log(show_text(hub.exec_cmd(sid, script, CMD_TIMEOUT)).rstrip("\n"))
 
 
 def line_shell(hub, sid):
@@ -3163,7 +3183,7 @@ def line_shell(hub, sid):
             return
         if not line.strip():
             continue
-        log(hub.exec_cmd(sid, line, CMD_TIMEOUT).rstrip("\n"))
+        log(show_text(hub.exec_cmd(sid, line, CMD_TIMEOUT)).rstrip("\n"))
 
 
 def run_tty(hub, sid):
@@ -3233,6 +3253,10 @@ def repl(hub, kit):
             continue
         try:
             selected, actor = repl_line(line, hub, kit, selected, actor)
+        except KeyboardInterrupt:
+            print("")
+            log("interrupted")
+            continue
         except Exception as exc:
             log("command failed: {0}".format(exc))
             continue
@@ -3278,7 +3302,7 @@ def repl_line(line, hub, kit, selected, actor):
             return selected, actor
         for sid in targets:
             log("---- {0} ----".format(sid))
-            log(hub.exec_cmd(sid, command, CMD_TIMEOUT).rstrip("\n"))
+            log(show_text(hub.exec_cmd(sid, command, CMD_TIMEOUT)).rstrip("\n"))
         return selected, actor
     if parts[0] == "play":
         parsed = parse_play(parts, line, actor)
@@ -3302,7 +3326,7 @@ def repl_line(line, hub, kit, selected, actor):
             plain, _hashed = kit.account_hash(actor)
             log("login for {0} is local only (not in the tasking): {1}".format(actor, plain))
         script = play_script(kind, sid, hub, kit, opts)
-        log(hub.exec_cmd(sid, script, CMD_TIMEOUT).rstrip("\n"))
+        log(show_text(hub.exec_cmd(sid, script, CMD_TIMEOUT)).rstrip("\n"))
         return selected, actor
     if parts[0] == "shell" and len(parts) == 1:
         targets = [selected] if selected else hub.online_ids()
@@ -3338,7 +3362,7 @@ def repl_line(line, hub, kit, selected, actor):
     if len(targets) != 1:
         log("use <id> first")
         return selected, actor
-    log(hub.exec_cmd(targets[0], line, CMD_TIMEOUT).rstrip("\n"))
+    log(show_text(hub.exec_cmd(targets[0], line, CMD_TIMEOUT)).rstrip("\n"))
 
     return selected, actor
 

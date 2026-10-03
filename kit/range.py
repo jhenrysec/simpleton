@@ -456,6 +456,7 @@ def linux_tradecraft(action, opts):
             "}}\n"
             "make_w() {{\n"
             "  dest=$1\n"
+            "  rm -f \"$dest\"\n"
             "  cat > \"$dest\" << 'ENDW'\n"
             "#!/bin/sh\n"
             "uptime\n"

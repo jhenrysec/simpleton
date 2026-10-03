@@ -3949,13 +3949,21 @@ def ssh_exec(config, alias, command, timeout, batch):
     return code, out or ""
 
 
-def ssh_exec_tty(config, alias, command, timeout):
-    proc = subprocess.Popen(["ssh", "-tt", "-F", config, alias, "--", command])
+def ssh_exec_stdin(config, alias, command, stdin_text, timeout):
+    proc = subprocess.Popen(
+        ["ssh", "-T", "-F", config, alias, "--", command],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        universal_newlines=True,
+    )
     try:
-        return proc.wait(timeout=timeout or 180)
+        out, _ = proc.communicate(stdin_text or "", timeout=timeout or 60)
+        return proc.returncode, out or ""
     except subprocess.TimeoutExpired:
         proc.kill()
-        return 124
+        out, _ = proc.communicate()
+        return 124, (out or "") + "\n[timed out]\n"
 
 
 def watch_main(args):
@@ -4217,8 +4225,9 @@ def linux_agent_start(remote_py, c2, channel, token, sid, profile, ports, zone):
         "rm -f /root/range.py\n"
         "for old in $(ps -eo pid,args | awk '/update_notifier.py|range.py agent/ && !/awk/ {{print $1}}'); do kill \"$old\" 2>/dev/null || true; done\n"
         "if [ -e {ref} ] && [ -f {pyfile} ]; then touch -r {ref} {pyfile}; fi\n"
-        "setsid {cmd} </dev/null >{log} 2>&1 &\n"
+        "setsid nohup {cmd} </dev/null >{log} 2>&1 &\n"
         "echo $! >{pid}\n"
+        "sleep 0.2\n"
         "if [ -e {ref} ]; then touch -r {ref} {log} {pid}; fi\n"
         "if kill -0 \"$(cat {pid})\" 2>/dev/null; then echo STARTED; exit 0; fi\n"
         "echo FAILED\n"
@@ -4229,7 +4238,7 @@ def linux_agent_start(remote_py, c2, channel, token, sid, profile, ports, zone):
 def linux_user_launch(c2, channel, token, sid, profile, ports, zone, use_sudo):
     body = linux_agent_start(LINUX_AGENT_PATH, c2, channel, token, sid, profile, ports, zone)
     marker = "RANGE_INSTALL_END"
-    run = "sudo bash" if use_sudo else "bash"
+    run = "sudo -S -p '' bash" if use_sudo else "bash"
     return (
         "cat > \"$HOME/.update-notifier.inst\" << '" + marker + "'\n"
         + body
@@ -4316,7 +4325,7 @@ def plant_selfcheck():
         failures.append("plant-id")
     ports = {"tcp": 443, "http": 80, "dns": 53, "mqtt": 1883, "ws": 8070}
     script = linux_user_launch("10.0.0.10", "ws", "lab-token-ok", "180", "continuous", ports, "lab", True)
-    if "sudo bash" not in script or "STARTED" not in script or "update_notifier.py" not in script or "touch -r" not in script or "/root/range.py" not in script:
+    if "sudo -S" not in script or "STARTED" not in script or "update_notifier.py" not in script or "touch -r" not in script or "/root/range.py" not in script:
         failures.append("plant-linux")
     if shutil.which("bash"):
         proc = subprocess.Popen(["bash", "-n"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
@@ -4376,6 +4385,7 @@ def plant_main(args):
         log("no student hosts to start. Routers keep the key and do not run an agent.")
         return 1 if failed else 0
     log("starting {0} agent(s). The id is the last octet of the address.".format(len(hosts)))
+    sudo_passwords = {}
     for host in hosts:
         if host["ip"] not in keyed:
             log("skipping {0}. the key did not land, so the copy would ask again.".format(host["ip"]))
@@ -4414,11 +4424,18 @@ def plant_main(args):
             ok = "STARTED" in out or "ALREADY" in out
         else:
             use_sudo = host["user"] != "root"
+            stdin_text = ""
             if use_sudo:
-                log("{0} will ask for the sudo password of {1}.".format(host["ip"], host["user"]))
+                if host["user"] not in sudo_passwords:
+                    sudo_passwords[host["user"]] = getpass.getpass("sudo password for {0}: ".format(host["user"]))
+                stdin_text = sudo_passwords[host["user"]] + "\n"
             command = linux_user_launch(c2, channel, token, host["sid"], profile, ports, zone, use_sudo)
-            code = ssh_exec_tty(args.ssh_config, host["alias"], command, 180)
-            ok = code == 0
+            code, out = ssh_exec_stdin(args.ssh_config, host["alias"], command, stdin_text, 60)
+            if out.strip():
+                sys.stdout.write(out if out.endswith("\n") else out + "\n")
+            if use_sudo and code != 0 and host["user"] in sudo_passwords:
+                sudo_passwords.pop(host["user"], None)
+            ok = code == 0 and "STARTED" in out
         if ok:
             log("{0} agent id {1}".format(host["ip"], host["sid"]))
         else:

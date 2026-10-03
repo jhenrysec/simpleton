@@ -3141,7 +3141,7 @@ commands
   play logs                empty auth, syslog, nginx, wtmp, journal. History stays
   play logs all            same, and wipe bash history too
   shell                    line-by-line remote shell. cd sticks. nano will not
-  tty                      real terminal on the guest. nano works. Type ~~. to leave it
+  tty                      real terminal on the guest. nano works. Type .quit and press Enter to leave
   get <remote> [local]     copy a file off the guest
   put <local> <remote>     copy a file onto the guest
   broadcast <command>      run on every agent that is up
@@ -3391,6 +3391,25 @@ def line_shell(hub, sid):
         log(show_text(hub.exec_cmd(sid, line, CMD_TIMEOUT)).rstrip("\n"))
 
 
+def tty_escape(pending, data):
+    buf = pending + data
+    if b"\x1d" in buf:
+        return buf.split(b"\x1d", 1)[0], True, b""
+    for token in (b".quit\r", b".quit\n", b"~~\r", b"~~\n"):
+        at = buf.find(token)
+        if at >= 0:
+            return buf[:at], True, b""
+    hold = b""
+    for token in (b".quit\r", b".quit\n", b"~~\r", b"~~\n"):
+        for size in range(len(token) - 1, 0, -1):
+            piece = token[:size]
+            if buf.endswith(piece) and len(piece) > len(hold):
+                hold = piece
+    if hold:
+        return buf[: -len(hold)], False, hold
+    return buf, False, b""
+
+
 def run_tty(hub, sid):
     if os.name == "nt" or not sys.stdin.isatty():
         log("this side has no terminal. Use shell, or get the file and edit it here.")
@@ -3406,7 +3425,7 @@ def run_tty(hub, sid):
     channel = hub.channel_of(sid)
     if channel not in ("tcp", "ws", "mqtt"):
         log("{0} will redraw slowly. tcp, ws, or mqtt are the ones for nano.".format(channel))
-    log("remote terminal. Type ~~. to leave it. Ctrl-] also leaves, when this console sends that key.")
+    log("remote terminal. Type .quit and press Enter to leave. ~~ then Enter also leaves.")
     hub.term_send(sid, "1:{0}:{1}".format(rows, cols))
     fd = sys.stdin.fileno()
     old = termios.tcgetattr(fd)
@@ -3425,15 +3444,11 @@ def run_tty(hub, sid):
             data = os.read(fd, 512)
             if not data:
                 break
-            pending = (pending + data)[-16:]
-            if b"\x1d" in data or b"~~." in pending:
-                kept = data.replace(b"\x1d", b"")
-                if b"~~." in pending:
-                    kept = b""
-                if kept:
-                    hub.term_send(sid, "2:" + b64e(kept))
+            forward, leave, pending = tty_escape(pending, data)
+            if forward:
+                hub.term_send(sid, "2:" + b64e(forward))
+            if leave:
                 break
-            hub.term_send(sid, "2:" + b64e(data))
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
         hub.term_send(sid, "0")

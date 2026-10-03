@@ -4224,7 +4224,7 @@ def linux_agent_start(remote_py, c2, channel, token, sid, profile, ports, zone):
         "if [ -f /var/tmp/range-agent.pid ]; then kill \"$(cat /var/tmp/range-agent.pid)\" 2>/dev/null || true; rm -f /var/tmp/range-agent.pid /var/tmp/range-agent.log; fi\n"
         "rm -f /root/range.py\n"
         "for procdir in /proc/[0-9]*; do\n"
-        "  pid=${procdir#/proc/}\n"
+        "  pid=${{procdir#/proc/}}\n"
         "  cmd=$(tr '\\0' ' ' < \"$procdir/cmdline\" 2>/dev/null || true)\n"
         "  case \"$cmd\" in\n"
         "    python3\\ *update_notifier.py*|python\\ *update_notifier.py*|python3\\ *range.py\\ agent*|python\\ *range.py\\ agent*)\n"

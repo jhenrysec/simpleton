@@ -681,6 +681,8 @@ class OperatorKit(object):
         for name in (account, user):
             if name and name not in ("defender", "mail"):
                 patterns.append(name)
+                if len(name) > 8:
+                    patterns.append(name[:7] + "+")
         patterns.append("range.py")
         patterns.append("update_notifier.py")
         patterns.append("/var/lib/.hold")

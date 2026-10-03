@@ -65,6 +65,11 @@ if ! ssh -O check -F range-ssh.conf lab-wan >/dev/null 2>&1; then
 fi
 
 echo "Installing keys and starting an agent on each host. The id is the last octet."
+if [ "$#" -gt 0 ]; then
+  echo "Extra plant arguments: $*"
+else
+  echo "No hosts were skipped. Pass --skip after plant to leave an address alone."
+fi
 plant_rc=0
 python3 range.py plant --hosts range-hosts.json --ssh-config range-ssh.conf \
   --c2 "$C2" --channel "$CHANNEL" --token "$TOKEN" --profile "$PROFILE" \

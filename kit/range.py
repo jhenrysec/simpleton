@@ -15,6 +15,7 @@ import platform
 import random
 import select
 import shutil
+import signal
 import socket
 import socketserver
 import struct
@@ -444,11 +445,6 @@ def linux_tradecraft(action, opts):
             "    if good_orig \"$candidate\"; then cp -L \"$candidate\" \"$dest\" && chmod 755 \"$dest\" && echo RESTORED=$name && return 0; fi\n"
             "  done\n"
             "  deb=$(ls -1 /var/cache/apt/archives/${{pkg}}_*.deb 2>/dev/null | tail -n 1)\n"
-            "  if [ -z \"$deb\" ]; then\n"
-            "    fetch=$(mktemp -d)\n"
-            "    (cd \"$fetch\" && apt-get download \"$pkg\" >/dev/null 2>&1) || true\n"
-            "    deb=$(ls -1 \"$fetch\"/${{pkg}}_*.deb 2>/dev/null | tail -n 1)\n"
-            "  fi\n"
             "  [ -n \"$deb\" ] || return 1\n"
             "  tmp=$(mktemp -d)\n"
             "  dpkg-deb -x \"$deb\" \"$tmp\" || {{ rm -rf \"$tmp\"; return 1; }}\n"
@@ -1398,11 +1394,15 @@ def run_command_posix(cmd, cwd, timeout):
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             universal_newlines=True,
+            start_new_session=True,
         )
         try:
             out, _ = proc.communicate(script, timeout=timeout)
         except subprocess.TimeoutExpired:
-            proc.kill()
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except OSError:
+                proc.kill()
             out, _ = proc.communicate()
             out = (out or "") + "\n[timed out after {0}s]\n".format(timeout)
         new_cwd = cwd

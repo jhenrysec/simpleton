@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Range Bench install guide</title>
+<style>
+  @page { size: letter; margin: 0.7in; }
+  body { margin: 0; color: #1b1f24; font: 12.5pt/1.45 Georgia, "Liberation Serif", serif; }
+  h1 { font: 600 26pt/1.15 system-ui, sans-serif; margin: 0 0 8px; }
+  h2 { font: 600 16pt/1.2 system-ui, sans-serif; margin: 0 0 8px; page-break-after: avoid; }
+  p, li { margin: 0 0 8px; }
+  ol { margin: 0 0 12px; padding-left: 1.2em; }
+  code { font-family: ui-monospace, Consolas, monospace; font-size: 0.92em; }
+  .kicker { font: 600 10pt system-ui, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #8a5a12; margin: 0 0 8px; }
+  .step { page-break-before: always; }
+  .step:first-of-type { page-break-before: auto; }
+  img { width: 100%; height: auto; border: 1px solid #d5d8de; border-radius: 6px; margin: 8px 0 4px; }
+  .note { font-size: 11pt; color: #3d4450; }
+</style>
+</head>
+<body>
+  <p class="kicker">Isolated lab only</p>
+  <h1>Install Range Bench</h1>
+  <p>Two machines. The laptop runs the page. Ocelot runs the operator. Guests do not need Node.</p>
+  <ol>
+    <li>Clone the repository and run the setup script. It installs Node if you need it, then starts the page.</li>
+    <li>In the browser, set today’s ocelot address, generate a token, and download the kit.</li>
+    <li>On ocelot, extract the zip, run setup once, and type <code>range</code>.</li>
+  </ol>
+
+  <section class="step">
+    <h2>1. Clone the repository</h2>
+    <p>On the laptop:</p>
+    <img src="images/01-clone.png" alt="git clone and cd into the repository" />
+  </section>
+
+  <section class="step">
+    <h2>2. Run the setup script</h2>
+    <p><code>sh scripts/install.sh</code> checks Node. If Node is missing or older than 22, it downloads Node.js v22.23.3 into your home directory. It does not use apt. It then installs the page and runs <code>npm run dev</code>.</p>
+    <img src="images/02-setup.png" alt="The setup script starts Range Bench on port 8080" />
+    <p class="note">Leave this window open. The page stops when you close it.</p>
+  </section>
+
+  <section class="step">
+    <h2>3. Open the page</h2>
+    <p>In a browser, open <code>http://localhost:8080</code>. No account is required.</p>
+    <img src="images/05-bench-top.png" alt="Range Bench with the ocelot address, token, and Download kit button" />
+    <p>Put today’s ocelot address in <strong>Ocelot public address</strong>. Click <strong>Generate</strong> so the lab token is at least 8 characters. Leave timing on <strong>Continuous</strong>.</p>
+  </section>
+
+  <section class="step">
+    <h2>4. Add the page and image, then download the kit</h2>
+    <p>Under <strong>Deface and lock</strong>, choose <code>index.html</code> and the image. The page can be up to 2MB. The image can be up to 8MB. Then click <strong>Download kit</strong>.</p>
+    <img src="images/07-deface.png" alt="Deface and lock, with file pickers for the page and the image" />
+    <p class="note">The button does nothing until the token is long enough. If you change the address or the token after downloading, download the kit again.</p>
+  </section>
+
+  <section class="step">
+    <h2>5. Install the kit on ocelot</h2>
+    <p>Copy <code>range-lab.zip</code> to ocelot. Extract it in your home directory and run setup once. Do not use sudo.</p>
+    <img src="images/03-ocelot.png" alt="Unzip the kit and run setup on ocelot" />
+  </section>
+
+  <section class="step">
+    <h2>6. Start the operator</h2>
+    <p>Open a new terminal on ocelot and type <code>range</code>. It opens the path to the WAN router, installs your key, starts one agent on each host, and leaves you at <code>range></code>.</p>
+    <img src="images/04-range.png" alt="The range command plants the agents and opens the console" />
+    <p class="note">The first lines should name the deface page and the image. <code>MISSING</code> means that file was not in the zip. Download the kit again with both files chosen.</p>
+    <p class="note">To leave one host alone: <code>range plant --skip 172.24.18.82</code></p>
+  </section>
+</body>
+</html>

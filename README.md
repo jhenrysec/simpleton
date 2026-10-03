@@ -24,16 +24,11 @@ cd charm-prism-glade-bolt
 sh scripts/install.sh
 ```
 
-`scripts/install.sh` checks Node. If it is missing, or older than 22, the script downloads Node.js v22.23.3 into `~/.local/node22` and adds it to `~/.bashrc` and `~/.profile`. It does not use `apt` and it does not replace a system Node. It then runs `npm install`.
+`scripts/install.sh` checks Node. If it is missing, or older than 22, the script downloads Node.js v22.23.3 into `~/.local/node22` and adds it to `~/.bashrc` and `~/.profile`. It does not use `apt` and it does not replace a system Node. It then runs `npm install` and starts the page.
 
-If the script says to open a new terminal, do that. Then:
+Leave that window open. Open `http://localhost:8080`. The page needs no account.
 
-```bash
-cd charm-prism-glade-bolt
-npm run dev
-```
-
-Open `http://localhost:8080`. Leave that terminal running. The page needs no account.
+The same steps, with screenshots, are in [docs/Range-Bench-Install-Guide.pdf](docs/Range-Bench-Install-Guide.pdf).
 
 Set the attacker address to the address the guests use, generate a token, and leave timing on **Continuous**. Upload `index.html` and the image if you are using them. **Download kit**.
 
@@ -62,7 +57,7 @@ Operator commands, plays, and the terminal are in [kit/README.md](kit/README.md)
 
 ## Order of the class
 
-1. Clone the repository and run `sh scripts/install.sh`. Start the page with `npm run dev`.
+1. Clone the repository and run `sh scripts/install.sh`. That installs Node if needed and starts the page.
 2. Download the kit, copy it to ocelot, and run `sh setup`. Type `range`.
 3. Open the SSH master when `range` asks. It installs the key and starts one agent per host.
 4. Watch from a second terminal. Work one agent at a time in the first.

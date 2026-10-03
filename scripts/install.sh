@@ -15,7 +15,6 @@ else
   fi
 fi
 
-installed_node=0
 if [ "$need_node" -eq 1 ]; then
   unset TAR_OPTIONS || true
   case "$(uname -m)" in
@@ -53,7 +52,6 @@ if [ "$need_node" -eq 1 ]; then
     touch "$rc"
     printf '\n%s\n' "$path_line" >> "$rc"
   done
-  installed_node=1
 fi
 
 if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
@@ -65,12 +63,6 @@ echo "Using Node $(node -v) and npm $(npm -v)"
 npm install
 
 echo
-echo "The page is installed."
-if [ "$installed_node" -eq 1 ]; then
-  echo "Open a new terminal so it picks up Node 22, then:"
-else
-  echo "Next:"
-fi
-echo "  cd $(pwd)"
-echo "  npm run dev"
-echo "Open http://localhost:8080"
+echo "Starting Range Bench at http://localhost:8080"
+echo "Leave this window open. Open that address in a browser."
+exec npm run dev

@@ -268,8 +268,8 @@ function Home() {
                 onChange={(event) => {
                   const file = event.target.files?.[0];
                   if (!file) return;
-                  if (file.size > 200000) {
-                    setUploadNote("That page is over 200KB. Trim it.");
+                  if (file.size > 2000000) {
+                    setUploadNote("That page is over 2MB. Trim it.");
                     return;
                   }
                   file.text().then((text) => {
@@ -290,8 +290,8 @@ function Home() {
                 onChange={(event) => {
                   const file = event.target.files?.[0];
                   if (!file) return;
-                  if (file.size > 350000) {
-                    setUploadNote("That image is over 350KB. Use WebSocket, TCP, or MQTT, and keep it smaller.");
+                  if (file.size > 8000000) {
+                    setUploadNote("That image is over 8MB. Use TCP, WebSocket, or MQTT.");
                     return;
                   }
                   file.arrayBuffer().then((buffer) => {

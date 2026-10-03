@@ -92,6 +92,17 @@ for f in deface/*.png deface/*.jpg deface/*.jpeg deface/*.gif deface/*.webp; do
   fi
 done
 
+if [ -n "$page" ]; then
+  echo "deface page: $page ($(wc -c < "$page") bytes)"
+else
+  echo "deface page: MISSING. Put index.html in deface/ next to range.py."
+fi
+if [ -n "$image" ]; then
+  echo "deface image: $image ($(wc -c < "$image") bytes)"
+else
+  echo "deface image: MISSING. Put the image in deface/ next to range.py."
+fi
+
 echo "Starting the operator. This window is now the range console. Leave it open."
 set -- python3 range.py operator --config range.json
 if [ -n "$page" ]; then

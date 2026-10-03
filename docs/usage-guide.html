@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Range usage guide</title>
+<style>
+  @page { size: letter; margin: 0.65in; }
+  body { margin: 0; color: #1b1f24; font: 11.5pt/1.4 Georgia, "Liberation Serif", serif; }
+  h1 { font: 600 24pt/1.15 system-ui, sans-serif; margin: 0 0 8px; }
+  h2 { font: 600 15pt/1.2 system-ui, sans-serif; margin: 18px 0 6px; page-break-after: avoid; }
+  h3 { font: 600 12.5pt/1.2 system-ui, sans-serif; margin: 0 0 4px; }
+  p { margin: 0 0 6px; }
+  code, .syn { font-family: ui-monospace, Consolas, monospace; font-size: 0.92em; }
+  .syn { display: block; background: #f4f1ea; padding: 4px 8px; margin: 0 0 6px; }
+  .cmd { page-break-inside: avoid; margin: 0 0 16px; }
+  img { width: 100%; height: auto; border: 1px solid #d5d8de; border-radius: 4px; margin: 4px 0 0; }
+  .kicker { font: 600 10pt system-ui, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #8a5a12; margin: 0 0 8px; }
+  .warn { border-left: 3px solid #8a5a12; padding-left: 10px; }
+</style>
+</head>
+<body>
+  <p class="kicker">Range console</p>
+  <h1>Using Range</h1>
+  <p>Type these at the <code>range></code> prompt on ocelot, after <code>range</code> has planted the agents. Select one host with <code>use</code> before a play, a file copy, or a shell. The id is the last octet of the address. Host <code>172.24.10.180</code> is <code>180</code>.</p>
+  <p><code>exit</code> at <code>range></code> stops the operator. <code>exit</code> inside <code>shell</code> only returns to <code>range></code>.</p>
+
+  <h2>Start, watch, and check</h2>
+
+  <div class="cmd">
+    <h3>range</h3>
+    <span class="syn">range</span>
+    <p>Opens the WAN master if it is down, copies your key, starts one agent on each host, then becomes the operator. Leave this window open. The prompt is <code>range></code>.</p>
+    <img src="usage-images/start-range.png" alt="range opens the path, plants agents, and starts the console" />
+  </div>
+
+  <div class="cmd">
+    <h3>range plant --skip</h3>
+    <span class="syn">range plant --skip 172.24.18.82</span>
+    <p>Same plant, but that address is left alone. Repeat the flag, or separate addresses with commas. The line <code>Extra plant arguments</code> means this copy of <code>range</code> accepted the flag. If that line is missing, the script on ocelot is old.</p>
+    <img src="usage-images/start-skip.png" alt="range plant skipping one address" />
+  </div>
+
+  <div class="cmd">
+    <h3>range watch</h3>
+    <span class="syn">range watch</span>
+    <p>A second terminal. Shows who is logged in on the focused hosts. This is not the agent list. Routers can appear here. Agents appear only in <code>sessions</code>.</p>
+    <img src="usage-images/start-watch.png" alt="range watch showing logged-in users" />
+  </div>
+
+  <div class="cmd">
+    <h3>selftest</h3>
+    <span class="syn">python3 range.py selftest</span>
+    <p>Checks TCP, HTTP, DNS, MQTT, and WebSocket on this machine, prints <code>PASS</code>, and exits. It does not start the operator. ICMP is skipped unless the shell can open a raw socket.</p>
+    <img src="usage-images/start-selftest.png" alt="selftest prints PASS and exits" />
+  </div>
+
+  <h2>Pick a host</h2>
+
+  <div class="cmd">
+    <h3>sessions</h3>
+    <span class="syn">sessions</span>
+    <p>Lists agents that have called in. <code>up</code> means the channel is alive. TCP, WebSocket, and MQTT stay listed while the socket is up. A blank list means no agent has checked in yet.</p>
+    <img src="usage-images/sessions.png" alt="sessions table" />
+  </div>
+
+  <div class="cmd">
+    <h3>ports</h3>
+    <span class="syn">ports</span>
+    <p>Prints the ports this operator is listening on, and the DNS zone. Class ports are 443, 80, and 53. MQTT is 1883. WebSocket is 8070.</p>
+    <img src="usage-images/ports.png" alt="ports listing" />
+  </div>
+
+  <div class="cmd">
+    <h3>use</h3>
+    <span class="syn">use 180</span>
+    <p>Selects one agent. The prompt becomes <code>range 180></code>. Later commands go to that host only. A plain command, such as <code>hostname</code>, runs in bash on Linux and PowerShell on Windows. <code>cd</code> sticks for the next command.</p>
+    <img src="usage-images/use.png" alt="use selects host 180" />
+  </div>
+
+  <div class="cmd">
+    <h3>back</h3>
+    <span class="syn">back</span>
+    <p>Clears the selection. The prompt returns to <code>range></code>.</p>
+    <img src="usage-images/back.png" alt="back clears the selection" />
+  </div>
+
+  <div class="cmd">
+    <h3>profile</h3>
+    <span class="syn">profile continuous</span>
+    <span class="syn">profile off</span>
+    <p><code>continuous</code> is the class. TCP, WebSocket, and MQTT stay connected either way, so a command lands as soon as you type it. HTTP, DNS, and ICMP ask about once a second. <code>off</code> stops that beacon. Those three look again in about half an hour, which is how you turn them back on without a login. <code>live</code> means continuous. Do not use <code>hunt</code>.</p>
+    <img src="usage-images/profile.png" alt="profile off and profile continuous" />
+  </div>
+
+  <div class="cmd">
+    <h3>broadcast</h3>
+    <span class="syn">broadcast hostname</span>
+    <p>Runs one command on every agent that is up. Routers do not answer. A host you skipped at plant does not answer.</p>
+    <img src="usage-images/broadcast.png" alt="broadcast hostname" />
+  </div>
+
+  <div class="cmd">
+    <h3>A normal command</h3>
+    <span class="syn">id</span>
+    <p>Anything that is not a built-in word is sent to the selected agent. You must <code>use</code> a host first. <code>[rc=0]</code> means the command exited cleanly.</p>
+    <img src="usage-images/raw.png" alt="id run on the selected host" />
+  </div>
+
+  <h2>A shell on the guest</h2>
+
+  <div class="cmd">
+    <h3>shell</h3>
+    <span class="syn">shell</span>
+    <p>One command at a time. The working directory sticks. <code>nano</code> will not work, because there is no terminal. <code>exit</code> returns to <code>range></code> and does not stop the operator.</p>
+    <img src="usage-images/shell.png" alt="line shell, then exit back to range" />
+  </div>
+
+  <div class="cmd">
+    <h3>tty</h3>
+    <span class="syn">tty</span>
+    <p>A real bash on the guest. <code>nano</code> and <code>vi</code> work. Type <code>.quit</code> and press Enter to leave. <code>~~</code> and Enter also leaves. Ctrl-C goes to the guest, not to Range. Use TCP, WebSocket, or MQTT. On DNS, HTTP, or ICMP the same terminal exists, but it redraws slowly.</p>
+    <img src="usage-images/tty.png" alt="tty with nano, then .quit" />
+  </div>
+
+  <h2>Files</h2>
+
+  <div class="cmd">
+    <h3>get</h3>
+    <span class="syn">get /tmp/range-test</span>
+    <span class="syn">get /var/www/html/index.html ./page.html</span>
+    <p>Copies a file from the guest to ocelot. If you omit the local name, it uses the file's basename in the current directory. Refuses a file over 8MB.</p>
+    <img src="usage-images/get.png" alt="get copies a small file to ocelot" />
+  </div>
+
+  <div class="cmd">
+    <h3>put</h3>
+    <span class="syn">put range-test /tmp/range-test-back</span>
+    <p>Copies a local file onto the guest. The remote path must start with <code>/</code>. It clears the immutable bit first, so you can replace a locked page. Prefer TCP, WebSocket, or MQTT for anything large. The limit is 1.5MB.</p>
+    <img src="usage-images/put.png" alt="put writes the file back" />
+  </div>
+
+  <h2>The web page</h2>
+  <p>Run <code>play snapshot</code> before a practice deface. <code>play revert</code> puts that copy back. <code>play undo</code> puts back the copy taken by the last deface, which is a different file.</p>
+
+  <div class="cmd">
+    <h3>play look</h3>
+    <span class="syn">play look</span>
+    <p>Shows the web root, the file mode, the owner, the lock bits from <code>lsattr</code>, and the top of <code>index.html</code>. It does not change the host.</p>
+    <img src="usage-images/look.png" alt="play look" />
+  </div>
+
+  <div class="cmd">
+    <h3>play snapshot</h3>
+    <span class="syn">play snapshot</span>
+    <p>Saves the live page and any images next to it under <code>/var/lib/.hold/site/</code>. This is the copy <code>play revert</code> uses.</p>
+    <img src="usage-images/snapshot.png" alt="play snapshot" />
+  </div>
+
+  <div class="cmd">
+    <h3>play deface</h3>
+    <span class="syn">play deface</span>
+    <span class="syn">play deface nobackup</span>
+    <p>Replaces <code>index.html</code> with the page from the kit and locks it. On Linux the lock is <code>chattr +i</code>. Editing then returns "Operation not permitted". The image is written beside the page and locked with it. A copy of the previous page is kept outside the site. <code>nobackup</code> skips that copy.</p>
+    <img src="usage-images/deface.png" alt="play deface" />
+  </div>
+
+  <div class="cmd">
+    <h3>play undo</h3>
+    <span class="syn">play undo</span>
+    <p>Clears the lock and puts back the copy taken by the last deface. If there is no copy, it writes a plain index. This is not the snapshot.</p>
+    <img src="usage-images/undo.png" alt="play undo" />
+  </div>
+
+  <div class="cmd">
+    <h3>play revert</h3>
+    <span class="syn">play revert</span>
+    <p>Clears the lock and puts back the snapshot from before the practice deface. Use this after a drill. <code>NO_SNAPSHOT</code> means you did not run <code>play snapshot</code> first.</p>
+    <img src="usage-images/revert.png" alt="play revert" />
+  </div>
+
+  <h2>History, a message, and timestamps</h2>
+
+  <div class="cmd">
+    <h3>play history</h3>
+    <span class="syn">play history</span>
+    <span class="syn">play history abdullayev.coshgun</span>
+    <p>Shows that user's bash history and the lines that look like hunting. With no user, it shows root. A user who has never logged in has no history file. That is not an error.</p>
+    <img src="usage-images/history.png" alt="play history" />
+  </div>
+
+  <div class="cmd">
+    <h3>play history clear</h3>
+    <span class="syn">play history backup clear</span>
+    <p>Erases that user's history files and root's history files. The home comes from <code>passwd</code>. <code>backup</code> lives in <code>/var/backups</code>, not <code>/home/backup</code>. <code>ABSENT</code> means the file was never there.</p>
+    <img src="usage-images/history-clear.png" alt="play history clear" />
+  </div>
+
+  <div class="cmd">
+    <h3>play wall</h3>
+    <span class="syn">play wall The page changed. The process list is the wrong tool.</span>
+    <p>Sends the rest of the line to every terminal on that host. <code>WALL=nobanner</code> means it used <code>wall -n</code>, so the students do not see a banner with your account. The words after <code>wall</code> are the message. They are not a username.</p>
+    <img src="usage-images/wall.png" alt="play wall" />
+  </div>
+
+  <div class="cmd">
+    <h3>play stamp</h3>
+    <span class="syn">play stamp</span>
+    <span class="syn">play stamp /usr/bin/ps /bin/ls</span>
+    <p>Runs <code>touch -r</code> so the files the plays changed match the time of a system file. The default reference is <code>/bin/ls</code>. With no path, it stamps the files Range already touched.</p>
+    <img src="usage-images/stamp.png" alt="play stamp" />
+  </div>
+
+  <h2>An account that can log in</h2>
+
+  <div class="cmd">
+    <h3>play account</h3>
+    <span class="syn">play account backup</span>
+    <p>The name must be <code>mail</code>, <code>games</code>, <code>news</code>, or <code>backup</code>. On Debian these already exist. The play sets a login shell, adds the account to <code>sudo</code>, and sets a shadow hash. The password is printed only on this console. It is not in the tasking the students can read. <code>backup</code>'s home is <code>/var/backups</code>.</p>
+    <img src="usage-images/account.png" alt="play account backup" />
+  </div>
+
+  <div class="cmd">
+    <h3>play cloak</h3>
+    <span class="syn">play cloak</span>
+    <p>Copies bash over <code>false</code> and <code>nologin</code>, and keeps the originals in <code>/var/lib/.hold</code>. A user whose shell is <code>nologin</code> can still get a shell. <code>SAME_FILE</code> means that path was already the same file, which is normal when <code>/bin</code> is a link to <code>/usr/bin</code>.</p>
+    <img src="usage-images/cloak.png" alt="play cloak" />
+  </div>
+
+  <div class="cmd">
+    <h3>play uncloak</h3>
+    <span class="syn">play uncloak</span>
+    <p>Puts <code>false</code> and <code>nologin</code> back from the hold directory. After this, <code>file</code> on those paths should not say they are bash. Run <code>play cloak</code> again only if that host should keep the puzzle for class.</p>
+    <img src="usage-images/uncloak.png" alt="play uncloak" />
+  </div>
+
+  <div class="cmd">
+    <h3>play veil</h3>
+    <span class="syn">play veil abdullayev.coshgun</span>
+    <p>Wraps <code>ps</code>, <code>ss</code>, <code>netstat</code>, <code>w</code>, and <code>who</code>. Their output hides that account, the short <code>ps</code> form (<code>abdulla+</code>), the short <code>netstat</code> form (<code>abdulla</code>), the agent name, the hold path, and the attacker address. Ordinary services stay. <code>cupsd</code> is not hidden. <code>htop</code>, <code>top</code>, and <code>last</code> are not wrapped. Running it again is safe. The originals stay in <code>/var/lib/.hold/bin/</code>.</p>
+    <img src="usage-images/veil.png" alt="play veil" />
+  </div>
+
+  <div class="cmd">
+    <h3>play unveil</h3>
+    <span class="syn">play unveil</span>
+    <p>Puts those five binaries back. <code>w</code> on Debian 9 is rebuilt from <code>who</code> and <code>ps</code> if the original binary was already gone.</p>
+    <img src="usage-images/unveil.png" alt="play unveil" />
+  </div>
+
+  <div class="cmd">
+    <h3>play shell</h3>
+    <span class="syn">play shell backup bash</span>
+    <p>Changes only the shell field in <code>/etc/passwd</code> to <code>vi</code>, <code>python</code>, <code>perl</code>, or <code>bash</code>. It does not replace <code>nologin</code>. That is <code>play cloak</code>. You do not need this play for the class.</p>
+    <img src="usage-images/play-shell.png" alt="play shell changes the passwd shell field" />
+  </div>
+
+  <h2>Leave these until after class</h2>
+  <p class="warn">These change the host the students will see. Do not run them during the exercise unless that is the point of the hour.</p>
+
+  <div class="cmd">
+    <h3>play persist</h3>
+    <span class="syn">play persist</span>
+    <p>Installs <code>mailq-local.service</code> so the agent starts again after a reboot. <code>PERSIST=cron</code> means that host has no systemd and a cron entry was used instead.</p>
+    <img src="usage-images/persist.png" alt="play persist" />
+  </div>
+
+  <div class="cmd">
+    <h3>play unpersist</h3>
+    <span class="syn">play unpersist</span>
+    <p>Removes that service. Safe to run if you never persisted. The line is <code>UNPERSIST=done</code>.</p>
+    <img src="usage-images/unpersist.png" alt="play unpersist" />
+  </div>
+
+  <div class="cmd">
+    <h3>play boot</h3>
+    <span class="syn">play boot abdullayev.coshgun</span>
+    <p>Logs that user off this host. It refuses <code>root</code>. The student loses the session they are working in.</p>
+    <img src="usage-images/boot.png" alt="play boot" />
+  </div>
+
+  <div class="cmd">
+    <h3>play logs</h3>
+    <span class="syn">play logs</span>
+    <span class="syn">play logs all</span>
+    <p>Empties auth, syslog, nginx, apache, wtmp, btmp, lastlog, and the journal. The files stay, and they are empty, which is the point. Bash history is left so you can still read what the students hunted. <code>play logs all</code> wipes that history too. On Windows this clears Application, System, Security, and PowerShell.</p>
+    <img src="usage-images/logs.png" alt="play logs" />
+    <img src="usage-images/logs-all.png" alt="play logs all" />
+  </div>
+
+  <div class="cmd">
+    <h3>exit</h3>
+    <span class="syn">exit</span>
+    <p>Stops the operator. The listeners close, and ordinary pings to ocelot work again. Agents keep running on the guests until the VM is rebuilt or you stop them. <code>quit</code> is the same command.</p>
+    <img src="usage-images/exit.png" alt="exit stops the operator" />
+  </div>
+</body>
+</html>

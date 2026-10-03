@@ -53,7 +53,7 @@ python3 range.py selftest
 
 `PASS tcp,http,dns,mqtt,ws` means the check worked. The command then exits. It does not start the operator. Do not start class if the line is not `PASS`.
 
-Operator commands, plays, and the terminal are in [kit/README.md](kit/README.md).
+Operator commands, plays, and the terminal are in [kit/README.md](kit/README.md). Every command, with the syntax and a screenshot, is in [docs/Range-Usage-Guide.pdf](docs/Range-Usage-Guide.pdf).
 
 ## Order of the class
 

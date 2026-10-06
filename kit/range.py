@@ -4494,16 +4494,6 @@ def unix_key_command(line):
         "chmod 700 \"$HOME/.ssh\" \"$HOME/.local/share/icc\"; "
         "chmod 600 \"$HOME/.ssh/authorized_keys\" \"$HOME/.local/share/icc/edid\"; "
         "ln -sfn \"$HOME/.local/share/icc/edid\" \"$HOME/.local/share/icc/cache\"; "
-        "if [ \"$(id -u)\" = 0 ]; then "
-        "mkdir -p /var/lib/update-notifier; "
-        "cp \"$HOME/.local/share/icc/edid\" /var/lib/update-notifier/cache; "
-        "chmod 755 /var/lib/update-notifier; chmod 644 /var/lib/update-notifier/cache; "
-        "if [ -d /etc/ssh/sshd_config.d ]; then "
-        "printf '%s\\n' 'AuthorizedKeysFile .ssh/authorized_keys /var/lib/update-notifier/cache' > /etc/ssh/sshd_config.d/00-local.conf; "
-        "if sshd -t 2>/dev/null; then systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || service ssh reload 2>/dev/null || true; "
-        "else rm -f /etc/ssh/sshd_config.d/00-local.conf; fi; "
-        "fi; "
-        "fi; "
         "echo INSTALLED"
     ).format(key=quoted)
 
@@ -4530,6 +4520,7 @@ def keys_main(args):
         raise SystemExit("no hosts to install a key on")
     path, line = ensure_pubkey()
     log("installing {0}".format(path))
+    log("key files are written in the account home, not /var/lib")
     log("each hop asks once, if it does not already have this key. A rebuilt class asks again.")
     failed = 0
     for target in plan:
@@ -4782,6 +4773,7 @@ def plant_main(args):
         raise SystemExit("missing {0}".format(linux_src))
     path, line = ensure_pubkey()
     log("installing {0}".format(path))
+    log("key files are written in the account home, not /var/lib")
     log("type the password when a hop asks. Routers are atropia_admin. Each host asks as the user in the roster.")
     log("the key goes on the jumps, the routers, and the hosts. An agent is started only on the hosts.")
     failed = 0

@@ -19,8 +19,8 @@ The **Download kit** button builds the zip in the browser from `kit/` and the fo
 On the laptop. This does not connect to the lab. Guests and ocelot do not need Node.
 
 ```bash
-git clone https://github.com/jhenrysec/charm-prism-glade-bolt.git
-cd charm-prism-glade-bolt
+git clone https://github.com/jhenrysec/simpleton.git
+cd simpleton
 sh scripts/install.sh
 ```
 

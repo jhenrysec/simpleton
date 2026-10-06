@@ -4156,7 +4156,27 @@ def fanout_main(args):
     return 0
 
 
-def watch_probe(student, windows):
+def watch_history(user, sudo_pw):
+    if sudo_pw:
+        marker = "RANGEPW"
+        while marker in sudo_pw:
+            marker += "X"
+        read = "sudo -S -p '' tail -n 8 \"$f\" <<'{0}' || echo UNREADABLE\n{1}\n{0}\n".format(marker, sudo_pw)
+    else:
+        read = "sudo -n tail -n 8 \"$f\" || echo UNREADABLE\n"
+    return (
+        "echo '---history---'\n"
+        "f=/home/{user}/.bash_history\n"
+        "if [ ! -e \"$f\" ]; then echo NONE\n"
+        "elif [ -r \"$f\" ]; then echo FILE=$f; tail -n 8 \"$f\"\n"
+        "else\n"
+        "  echo FILE=$f\n"
+        "  {read}"
+        "fi\n"
+    ).format(user=user, read=read)
+
+
+def watch_probe(student, windows, sudo_pw=""):
     user = student if re_account(student) else "defender"
     if windows:
         return (
@@ -4171,12 +4191,10 @@ def watch_probe(student, windows):
         "echo HOST=$(hostname 2>/dev/null || echo unknown)\n"
         "echo '---who---'\n"
         "who 2>/dev/null | head -n 12 || true\n"
-        "echo '---history---'\n"
-        "f=/home/{user}/.bash_history\n"
-        "if [ -f \"$f\" ]; then echo FILE=$f; tail -n 8 \"$f\"; else echo NONE; fi\n"
+        "{history}"
         "echo '---shells---'\n"
         "ps -eo user,args 2>/dev/null | grep -F -- {user} | grep -v 'grep -F' | head -n 6 || true\n"
-    ).format(user=user)
+    ).format(user=user, history=watch_history(user, sudo_pw))
 
 
 def watch_targets(doc, include_wan):
@@ -4233,9 +4251,13 @@ def ssh_exec(config, alias, command, timeout, batch):
     return code, out or ""
 
 
-def ssh_exec_stdin(config, alias, command, stdin_text, timeout):
+def ssh_exec_stdin(config, alias, command, stdin_text, timeout, batch=False):
+    cmd = ["ssh", "-T", "-F", config]
+    if batch:
+        cmd.extend(["-o", "BatchMode=yes"])
+    cmd.extend([alias, "--", command])
     proc = subprocess.Popen(
-        ["ssh", "-T", "-F", config, alias, "--", command],
+        cmd,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -4248,6 +4270,30 @@ def ssh_exec_stdin(config, alias, command, stdin_text, timeout):
         proc.kill()
         out, _ = proc.communicate()
         return 124, (out or "") + "\n[timed out]\n"
+
+
+def watch_sudo_password(args, targets):
+    hosts = [item for item in targets if not item["windows"] and item.get("role") != "router"]
+    if not hosts:
+        return ""
+    check = "if [ \"$(id -u)\" = 0 ]; then exit 0; fi; sudo -n true"
+    code, _out = ssh_exec(args.ssh_config, hosts[0]["alias"], check, 25, True)
+    if code == 0:
+        return ""
+    host = hosts[0]
+    for _attempt in range(3):
+        password = getpass.getpass("sudo password to read history on {0}: ".format(host["name"]))
+        if not password:
+            return ""
+        marker = "RANGEPW"
+        while marker in password:
+            marker += "X"
+        probe = "sudo -S -p '' true <<'{0}'\n{1}\n{0}\n".format(marker, password)
+        code, _out = ssh_exec(args.ssh_config, host["alias"], probe, 25, True)
+        if code == 0:
+            return password
+        log("that sudo password was not accepted")
+    raise SystemExit("could not sudo on {0}".format(host["name"]))
 
 
 def watch_main(args):
@@ -4264,6 +4310,7 @@ def watch_main(args):
         code, _out = ssh_exec(args.ssh_config, target["alias"], "echo ok", 60, False)
         state = "up" if code == 0 else "failed"
         log("{0}  {1}  {2}  {3}".format(state, target["role"], target["name"], target["ip"]))
+    sudo_pw = watch_sudo_password(args, targets)
     log("watching {0} devices every {1}s. Ctrl-C stops the watch. The sockets stay.".format(len(targets), every))
     previous = {}
     try:
@@ -4273,13 +4320,23 @@ def watch_main(args):
             lock = threading.Lock()
 
             def run_one(target, lock=lock, results=results):
-                code, out = ssh_exec(
-                    args.ssh_config,
-                    target["alias"],
-                    watch_probe(student, target["windows"]),
-                    args.timeout,
-                    True,
-                )
+                if target["windows"]:
+                    code, out = ssh_exec(
+                        args.ssh_config,
+                        target["alias"],
+                        watch_probe(student, True),
+                        args.timeout,
+                        True,
+                    )
+                else:
+                    code, out = ssh_exec_stdin(
+                        args.ssh_config,
+                        target["alias"],
+                        "bash -s",
+                        watch_probe(student, False, sudo_pw),
+                        args.timeout,
+                        True,
+                    )
                 with lock:
                     results.append((target, code, out))
 

